@@ -34,10 +34,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Local state that is not in git
 
-- `frontend/` and `backend-nest/` contain only `package.json` + `node_modules` (dependencies already installed).
-  They are committed in steps 14 and 26.
-- The root `package.json`, `package-lock.json`, and `scripts/setup-env.mjs` are untracked; they are committed when first needed (step 07 for secrets, step 30 for root scripts).
 - `backend-express/.env` exists locally (git-ignored), copied from `.env.example`.
+- Nothing else: `frontend/`, `backend-nest/`, the root `package.json`, and `scripts/setup-env.mjs` were deleted on purpose.
+  Each step creates its own files from scratch (frontend in step 14, Nest in step 26, `setup-env.mjs` in step 07, root scripts in step 30).
 
 ## Known gaps (fixed in later steps)
 
