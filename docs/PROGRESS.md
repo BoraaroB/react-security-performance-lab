@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 01 (Express skeleton)
-- **In review:** 02 (`pr/02-request-logger`): waiting for the user to push, open the PR, and merge
-- **Next step:** 03 (`pr/03-error-handling`): `AppError`, central error handler, JSON 404, error logs with request ID
+- **Last merged step:** 02 (request logger)
+- **In review:** 03 (`pr/03-error-handling`): waiting for the user to push, open the PR, and merge
+- **Next step:** 04 (`pr/04-validation`): Zod middleware for body/params/query, `VALIDATION_ERROR` with `details`
 
 ## How to resume after `/clear`
 
@@ -22,7 +22,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 |---|---|---|---|
 | 00 | Workflow, plan, skills | pushed directly to `main` (no PR) | `git branch -M main` was run while on the PR branch; accepted as is |
 | 01 | Express skeleton | ✅ PR #1 | Added `lib/graceful-shutdown` as an extra portable module (not in the original plan) |
-| 02 | Request logger | 🔍 PR in review | `lib/logger` = `core.ts` (pino + redaction) + `express.ts` (pino-http adapter) |
+| 02 | Request logger | ✅ PR #2 | `lib/logger` = `core.ts` (pino + redaction) + `express.ts` (pino-http adapter) |
+| – | Smaller PR budget | ✅ PR #3 (`chore/smaller-prs`) | docs only |
+| 03 | Error handling | 🔍 PR in review | `lib/errors` = `core.ts` (AppError, toAppError, toErrorBody, sourceLocation) + `express.ts` (404 + error handler) |
 
 ## Decisions (and why)
 
@@ -39,6 +41,14 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `trustIncomingRequestId: true` (behind a trusted proxy) and only if it matches `^[\w-]{1,64}$` (no log injection).
 - **Request log shape:** `req.log` is a child logger with only `reqId` (`quietReqLogger`), so handler logs stay short.
   The request line logs the path without the query string; `query` and `body` are logged only when `logPayloads` is on (dev).
+- **Error handling (step 03):** `AppError(status, code, message, { details?, cause? })`; its message is always safe for the client.
+  Library client errors that follow `http-errors` (`status` 4xx + `expose: true`, e.g. invalid JSON from `express.json()`)
+  keep their status with a generic message and a code from the status text (`BAD_REQUEST`, `PAYLOAD_TOO_LARGE`).
+  The parser's own message is never sent or logged, because newer Node versions echo part of the body (it could hold a password).
+  Everything else → 500 `INTERNAL_ERROR`. The 404 message does not echo the path.
+- **Error logs:** the error handler logs through `req.log` (so lines carry `reqId`): 4xx → one `warn` line `CODE: message`;
+  5xx → `error` with `err` (stack) and `source` (`file:line:col`, first frame outside `node_modules`).
+  The pino-http request line no longer has `err`: for 5xx it only had a made-up "failed with status code 500" error.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -50,9 +60,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Known gaps (fixed in later steps)
 
-- Unknown routes return Express's default HTML 404 page → JSON 404 in step 03.
-- Invalid JSON bodies and thrown errors go to Express's default handler (stack printed to the console, HTML response) → step 03.
-  The request line itself is already logged correctly (`WARN POST ... → 400`).
-- The step 03 error handler should log through `req.log` so error lines carry `reqId`.
+- No route throws a 500 yet, so the 500 path was only tested with a temporary script (see `docs/prs/03-error-handling.md`).
+- No automated tests yet; verification is typecheck + build + curl smoke tests.
 - `express.json()` uses the default 100 kb body limit → explicit, smaller limit in step 05.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
