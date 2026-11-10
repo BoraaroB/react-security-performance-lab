@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { createEncryptor, DecryptionError } from '../../lib/crypto/index.js';
+import { createPasswordHasher, PasswordTooLongError } from '../../lib/password/index.js';
 import { rateLimit } from '../../lib/rate-limit/index.js';
 import { validate } from '../../lib/validation/index.js';
 import { logger } from '../logger.js';
@@ -63,5 +64,34 @@ demoRouter.get('/crypto', (_req, res) => {
     decrypted: tryDecrypt(first, 'demo:user-1'),
     tampered: tryDecrypt(tampered, 'demo:user-1'),
     wrongContext: tryDecrypt(first, 'demo:user-2'),
+  });
+});
+
+// Demo of bcrypt with a FIXED password (never the caller's input). Hashing is slow on purpose (~1 s of CPU for this
+// whole response), so this route has a strict limit: an open "hash anything" endpoint would be a free way to burn CPU.
+const demoPasswords = createPasswordHasher(); // default cost 12
+
+demoRouter.get('/password', rateLimit({ windowMs: 60_000, limit: 5, logger }), async (_req, res) => {
+  const password = 'User1234!';
+  const started = performance.now();
+  const first = await demoPasswords.hash(password);
+  const hashMs = Math.round(performance.now() - started);
+  const second = await demoPasswords.hash(password); // new random salt → a different hash for the same password
+  const olderHash = await createPasswordHasher({ cost: 10 }).hash(password);
+  const tooLong = await demoPasswords.hash('a'.repeat(73)).catch((error: unknown) => {
+    if (error instanceof PasswordTooLongError) return error.code;
+    throw error;
+  });
+  res.json({
+    password,
+    first,
+    second,
+    // "$2b$12$" + 22 characters of salt + 31 characters of hash: everything verify() needs is in one string.
+    parts: { algorithm: first.slice(1, 3), cost: Number(first.slice(4, 6)), salt: first.slice(7, 29), hash: first.slice(29) },
+    hashMs,
+    verifyCorrect: await demoPasswords.verify(password, first),
+    verifyWrong: await demoPasswords.verify('User1234?', first),
+    needsRehash: { cost12Hash: demoPasswords.needsRehash(first), cost10Hash: demoPasswords.needsRehash(olderHash) },
+    tooLong,
   });
 });
