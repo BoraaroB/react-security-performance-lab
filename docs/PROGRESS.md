@@ -37,6 +37,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Automatic review (added after PR 04):** before every commit, `next-step` runs two read-only agents in parallel,
   `code-reviewer` and `security-reviewer` (`.claude/agents/`), on the staged diff. Claude checks each finding, fixes the valid
   ones, and lists the outcome in a `## Review` section of the PR description. They do not replace the user's own review.
+- **No `.env` access for Claude Code (user's decision):** `.claude/settings.json` denies `Read` on `.env`, `.env.local`,
+  `.env.*.local`, `.env.development`, `.env.production`, `.env.test` in every folder. `.env.example` stays readable.
+  Applies to the main session and to subagents (reviewers).
 - **Plan additions (after PR 04):** step 04b (process-level error handlers), `trust proxy` in step 06, and Phase E
   (backend ESLint, tests, CI with `npm audit`). Tests are at the end on purpose (the user's choice).
 - **No AI attribution** in commits or PR descriptions.
@@ -79,7 +82,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - The request log line shows the body/query AFTER validation (it is written when the response finishes),
   so stripped fields (e.g. an attempted `role: "admin"`) are not visible in the log. Accepted for now.
 - No automated tests yet; verification is typecheck + build + curl smoke tests + review agents → Phase E (steps 33–35).
-- The review agents are read-only and keep away from `.env` only because their instructions say so. A project
-  `.claude/settings.json` with `permissions.deny` for `Read(**/.env)` would enforce it; the user decides.
+- Shell commands (`cat .env`) are not covered by the `Read(...)` deny rules in `.claude/settings.json`; only Claude Code's
+  built-in file tools are. Full coverage would need Claude Code's Bash sandbox (not enabled; the user decides).
 - `express.json()` uses the default 100 kb body limit → explicit, smaller limit in step 05.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.

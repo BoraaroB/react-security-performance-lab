@@ -9,6 +9,7 @@ like "safe in development, dangerous in production" (the demo routes in PR 04). 
 - `.claude/agents/code-reviewer.md`, `.claude/agents/security-reviewer.md`: the two agents (read-only, never read `.env`).
 - `.claude/skills/next-step/SKILL.md`: sections in the order they are done; new "Automatic review" section; `## Review`
   in the PR template; checks that every "In review" branch (`pr/*`, `chore/*`, `fix/*`) is merged before a new step.
+- `.claude/settings.json`: Claude Code may not read `.env` files (any folder); `.env.example` stays readable.
 - `CLAUDE.md`: the review rule and where side-branch PR descriptions live.
 - `docs/IMPLEMENTATION_PLAN.md`: step 04b (process errors, non-zero exit), `trust proxy` in step 06 (hop count, never `true`),
   Phase E (backend ESLint, tests, CI with safe GitHub Actions settings).
@@ -25,4 +26,7 @@ The agents reviewed this PR themselves (as `general-purpose` agents following th
 - security-reviewer (8): 7 fixed, 1 left to the user. Fixed: `grep -r` could print `.env` secrets → `git grep` only;
   `trust proxy` design and 04b non-zero exit written into the plan; checklist extended with crypto, sessions,
   redirects/OAuth, CSRF/CORS details, Docker and GitHub Actions; CI row lists safe workflow settings.
-  Left to the user: a `.claude/settings.json` deny rule for `.env` (a permission change), noted in "Known gaps".
+  The `.env` deny rule (a permission change) was the user's decision: added as `.claude/settings.json`.
+
+## How to test the `.env` rule
+Ask Claude Code to read `backend-express/.env` → "denied by your permission settings". `.env.example` still works.
