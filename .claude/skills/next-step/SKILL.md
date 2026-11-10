@@ -23,7 +23,9 @@ The goal is that the user can follow **every** change. Smaller is better.
 - Before writing code, load the `portable-module` skill and follow it for every module in `lib/`, `hooks/` and `components/`.
 - No drive-by refactors, no code for future steps, no new dependencies the plan does not mention.
   If a new dependency is unavoidable, list it in the PR description with the reason.
-- Budget: **~300 changed lines** (lock files excluded). If it will be more, stop, propose a split (`NNa`, `NNb`) and ask.
+- Budget: **~150 changed lines of code** (lock files and `docs/` excluded) and **one new concept** per PR.
+  If it will be more, stop, propose a split (`NNa`, `NNb`, ...) and ask. When in doubt, split.
+- Keep the PR description short too (aim for ~40 lines): the user reads all of it.
 - Everything is in English: code, comments, UI text, docs.
 - Comments explain **why** (the security or performance reason), not what obvious code does.
 
