@@ -6,6 +6,11 @@ React rendering performance, bundle size and asset loading, and memory leaks.
 
 The user has **limited experience** with security and performance optimization. Code and explanations must be clear and educational.
 
+## Start of every session
+
+**Read [docs/PROGRESS.md](docs/PROGRESS.md) first.** It says what is merged, what is in review, and what comes next,
+so work can continue after `/clear` without any chat history.
+
 ## How we work
 
 - **One step = one small PR.** The order of steps is in [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
@@ -14,6 +19,7 @@ The user has **limited experience** with security and performance optimization. 
 - After each PR, **stop** and wait for the user's confirmation. The next step starts only after the merge.
 - Every module must be **portable** (copy-paste into another project). Load the `portable-module` skill before writing code.
 - To explain a finished PR and quiz the user for interviews, use the `explain-pr` skill.
+- Every PR updates `docs/PROGRESS.md` (current state, done table, decisions, known gaps).
 
 ## Language
 

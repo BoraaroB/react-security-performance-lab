@@ -9,7 +9,8 @@ The goal is that the user can follow **every** change. Smaller is better.
 
 ## 1. Pick the step
 
-1. Read `docs/IMPLEMENTATION_PLAN.md`. Take the first ⬜ row unless the user named a step number.
+1. Read `docs/PROGRESS.md` (current state, decisions, known gaps) and `docs/IMPLEMENTATION_PLAN.md`.
+   Take the first ⬜ row unless the user named a step number.
 2. Run `git switch main && git pull`, then check `git status` and `git log`:
    - If the previous step's `pr/*` branch is not merged into `origin/main` yet, **ask** the user to merge it first.
      Do not continue without an answer. Never merge or push yourself.
@@ -63,6 +64,9 @@ typecheck/build/smoke test: what was run and what came out.
 ## 5. Commit and finish
 
 1. In `docs/IMPLEMENTATION_PLAN.md`, set this step's status to 🔍 and the previous (merged) step's status to ✅.
+   Update `docs/PROGRESS.md`: "Current state" (last merged = previous step, in review = this step, next step),
+   the "Done" table, any new decisions or deviations from the plan, and known gaps.
+   It must be enough for a fresh session after `/clear` to continue without chat history.
 2. `git add` only this step's files. The commit message follows Conventional Commits,
    e.g. `feat(express): add central error handler`.
    **No AI attribution**: no `Co-Authored-By: Claude`, no "Generated with Claude Code", in commits or PR descriptions.
