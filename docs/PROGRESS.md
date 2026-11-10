@@ -5,9 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 06 (rate limiting, PR #11)
-- **In review:** 07a (`pr/07a-crypto`): `lib/crypto` (AES-256-GCM), `DATA_ENCRYPTION_KEY`, `scripts/setup-env.mjs`, demo route
-- **Next step:** 07b (`pr/07b-password-hashing`): `lib/password` (bcrypt)
+- **Last merged step:** 07a (encryption, PR #12)
+- **In review:** 07b (`pr/07b-password-hashing`): `lib/password` (bcrypt), demo route `/api/demo/password`
+- **Next step:** 07c (`pr/07c-store-seed`): in-memory store + repositories + seeded demo accounts.
+  **Ask the user first** which field is encrypted at rest (see "Store and layering" under Decisions).
 
 ## How to resume after `/clear`
 
@@ -32,7 +33,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 05a | Security headers | ✅ PR #9 | `lib/security/headers.ts` (`securityHeaders()`, helmet); `express.json({ limit: '32kb' })` |
 | 05b | CORS | ✅ PR #10 | `lib/security/cors.ts` (`corsPolicy()`, `isExactOrigin()`); `CORS_ORIGINS` in config |
 | 06 | Rate limiting | ✅ PR #11 | `lib/rate-limit` (`rateLimit()`, express-rate-limit); `TRUST_PROXY`; global 300/15 min |
-| 07a | Encryption | 🔍 `pr/07a-crypto` | `lib/crypto` (`createEncryptor`, `parseEncryptionKey`); `DATA_ENCRYPTION_KEY`; `scripts/setup-env.mjs` |
+| 07a | Encryption | ✅ PR #12 | `lib/crypto` (`createEncryptor`, `parseEncryptionKey`); `DATA_ENCRYPTION_KEY`; `scripts/setup-env.mjs` |
+| 07b | Password hashing | 🔍 `pr/07b-password-hashing` | `lib/password` (`createPasswordHasher` → `hash`, `verify`, `needsRehash`); `bcryptjs` |
 
 ## Decisions (and why)
 
@@ -142,6 +144,30 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Crypto demo (step 07a):** `GET /api/demo/crypto` encrypts a FIXED text, never the caller's input (an "encrypt
   anything" endpoint would let anyone use the server's key), with its OWN random key, never `DATA_ENCRYPTION_KEY`
   (a public route must not hand out ciphertexts the real key accepts). Shows random IVs, tamper detection, wrong context.
+- **Password hashing (step 07b):** `lib/password` wraps `bcryptjs` 3 (pure JS, no native build, own types), no adapter.
+  `createPasswordHasher({ cost })`: default 12 (≈ 200 ms per hash), allowed 10–14 (below 10 is too fast, above 14 makes
+  login a DoS lever; a huge cost would never finish), anything else throws `PasswordHasherConfigError` at startup.
+  bcrypt silently ignores bytes after 72, so `hash` throws `PasswordTooLongError` (`PASSWORD_TOO_LONG`) and `verify`
+  returns `false` for longer passwords; `MAX_PASSWORD_BYTES` is exported for the step 09 Zod schema (count UTF-8 bytes).
+  `verify` never throws: a malformed hash gives `false` (bcryptjs rejects a malformed 60-character hash, so `compare` is
+  wrapped in try/catch; found in review), and so does a stored hash with a cost above 14 (bcrypt trusts the cost in the
+  hash, so a planted `$2b$31$` hash would pin the CPU). Lower costs still verify, so old hashes can be upgraded. `needsRehash` (`getRounds !== cost`) lets login upgrade
+  old hashes. Argon2id (OWASP's first choice) was not used: it needs a native npm package or Node's
+  still-experimental `crypto.argon2` (Node 24.7+); bcryptjs is pure JS, stable, and works the same in the Nest copy. The shared hasher (glue) is
+  created in 07c, where it is first used.
+- **Password demo (step 07b):** `GET /api/demo/password` hashes a FIXED password (never the caller's input) with its
+  own hasher, 5 requests per minute: one response costs ~1 s of CPU, so an open "hash anything" route would be a DoS button.
+- **Store and layering (decided before 07b, for 07c on):** the store is plain `Map`s in memory, as planned (SQLite and
+  Postgres were discussed and declined): a `createStore()` factory with `reset()`, `randomUUID()` IDs, `structuredClone`
+  on reads, and an email → id index for login. New features use routes → controllers → services → repositories:
+  routes = URL + middleware (validate, auth, rate limit); controllers = `req`/`res` only; services = business logic
+  (password check, ownership); repositories = entity type + data access over the `Map`s, one file each
+  (`repositories/users.repository.ts` with `interface User` + `createUsersRepository(store)`). Folder `repositories/`,
+  not `models/` ("model" is ambiguous, e.g. Mongoose; Nest uses the same terms). Layout:
+  `src/app/{routes,controllers,services,repositories}/` + `src/app/store.ts`, files `<name>.<layer>.ts`. Routes never
+  touch a `Map`, so the store could later be swapped (e.g. SQLite) without touching routes. The existing `health` and
+  `demo` routes stay as they are (no drive-by refactor).
+  **Open for 07c (ask the user):** what is encrypted at rest: `name` only (simple), or `email` + an HMAC blind index (needs a second key).
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -177,4 +203,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   in-memory store that only matters within one run). The `v1.` prefix leaves room for a key ID later.
 - **Encrypted values are not searchable (07a):** a random IV means `encrypt(x)` differs every time, so lookups by an
   encrypted field need a blind index (HMAC). Decide in 07c whether `email` is encrypted.
+- **User enumeration timing (07b → step 09):** login must run `verify` against a dummy hash when the email does not
+  exist, or the faster response reveals which accounts exist. Not in `lib/password` yet; step 09 adds it.
+- **bcrypt CPU on the main thread (07b):** `bcryptjs` async hashing yields between chunks, but it still uses the main
+  thread's CPU. Many parallel logins slow every request; the strict login limiter (step 09) is the mitigation.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
