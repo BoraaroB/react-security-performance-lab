@@ -29,6 +29,8 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
   // Optional: "true"/"false". Defaults to on in development and off in production (see below).
   ENABLE_DEMO_ROUTES: z.stringbool().optional(),
+  // Optional: "true"/"false". Defaults to on in development and off in production (see below).
+  SEED_DEMO_ACCOUNTS: z.stringbool().optional(),
   // Optional: comma-separated browser origins allowed to call the API with cookies (see below for the default).
   CORS_ORIGINS: z
     .string()
@@ -86,6 +88,8 @@ function loadConfig() {
       logLevel: env.LOG_LEVEL ?? (env.NODE_ENV === 'production' ? 'info' : 'debug'),
       // Demo routes are extra attack surface, so production has them only when someone turns them on explicitly.
       enableDemoRoutes: env.ENABLE_DEMO_ROUTES ?? env.NODE_ENV !== 'production',
+      // Demo accounts have publicly known passwords: on a real server they would be open doors.
+      seedDemoAccounts: env.SEED_DEMO_ACCOUNTS ?? env.NODE_ENV !== 'production',
       // Dev: the Vite dev server. Production: no cross-origin access unless configured (the safe default).
       corsOrigins: env.CORS_ORIGINS ?? (env.NODE_ENV === 'production' ? [] : ['http://localhost:5173']),
       // 0 → false (Express's default), so the rate limiter can warn when X-Forwarded-For arrives without a trusted proxy.

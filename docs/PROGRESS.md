@@ -5,10 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 07a (encryption, PR #12)
-- **In review:** 07b (`pr/07b-password-hashing`): `lib/password` (bcrypt), demo route `/api/demo/password`
-- **Next step:** 07c (`pr/07c-store-seed`): in-memory store + repositories + seeded demo accounts.
-  **Ask the user first** which field is encrypted at rest (see "Store and layering" under Decisions).
+- **Last merged step:** 07b (password hashing, PR #13)
+- **In review:** 07c (`pr/07c-store-seed`): in-memory store, users repository (`name` encrypted at rest), demo accounts
+- **Next step:** 08 (`pr/08-jwt-access-token`): `lib/jwt` (sign/verify, pinned algorithm, iss/aud), `authenticate` middleware
 
 ## How to resume after `/clear`
 
@@ -34,7 +33,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 05b | CORS | ✅ PR #10 | `lib/security/cors.ts` (`corsPolicy()`, `isExactOrigin()`); `CORS_ORIGINS` in config |
 | 06 | Rate limiting | ✅ PR #11 | `lib/rate-limit` (`rateLimit()`, express-rate-limit); `TRUST_PROXY`; global 300/15 min |
 | 07a | Encryption | ✅ PR #12 | `lib/crypto` (`createEncryptor`, `parseEncryptionKey`); `DATA_ENCRYPTION_KEY`; `scripts/setup-env.mjs` |
-| 07b | Password hashing | 🔍 `pr/07b-password-hashing` | `lib/password` (`createPasswordHasher` → `hash`, `verify`, `needsRehash`); `bcryptjs` |
+| 07b | Password hashing | ✅ PR #13 | `lib/password` (`createPasswordHasher` → `hash`, `verify`, `needsRehash`); `bcryptjs` |
+| 07c | Store + seed | 🔍 `pr/07c-store-seed` | `store.ts`, `repositories/users.repository.ts`, `security.ts`, `seed.ts`; `SEED_DEMO_ACCOUNTS`; posts deferred to step 12 |
 
 ## Decisions (and why)
 
@@ -158,16 +158,36 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Password demo (step 07b):** `GET /api/demo/password` hashes a FIXED password (never the caller's input) with its
   own hasher, 5 requests per minute: one response costs ~1 s of CPU, so an open "hash anything" route would be a DoS button.
 - **Store and layering (decided before 07b, for 07c on):** the store is plain `Map`s in memory, as planned (SQLite and
-  Postgres were discussed and declined): a `createStore()` factory with `reset()`, `randomUUID()` IDs, `structuredClone`
-  on reads, and an email → id index for login. New features use routes → controllers → services → repositories:
+  Postgres were discussed and declined): a `createStore()` factory with `reset()`, `randomUUID()` IDs, and an email → id
+  index for login (what was actually built: see "Store and users repository (step 07c)" below). New features use routes → controllers → services → repositories:
   routes = URL + middleware (validate, auth, rate limit); controllers = `req`/`res` only; services = business logic
   (password check, ownership); repositories = entity type + data access over the `Map`s, one file each
-  (`repositories/users.repository.ts` with `interface User` + `createUsersRepository(store)`). Folder `repositories/`,
+  (`repositories/users.repository.ts` with `interface User` + `createUsersRepository(store, encryptor)`). Folder `repositories/`,
   not `models/` ("model" is ambiguous, e.g. Mongoose; Nest uses the same terms). Layout:
   `src/app/{routes,controllers,services,repositories}/` + `src/app/store.ts`, files `<name>.<layer>.ts`. Routes never
   touch a `Map`, so the store could later be swapped (e.g. SQLite) without touching routes. The existing `health` and
   `demo` routes stay as they are (no drive-by refactor).
-  **Open for 07c (ask the user):** what is encrypted at rest: `name` only (simple), or `email` + an HMAC blind index (needs a second key).
+- **Store and users repository (step 07c):** `UserRecord` (in `store.ts`) is the stored row: `id` (`randomUUID`),
+  `email` (normalized: trimmed + lowercase, plain text), `nameEncrypted`, `passwordHash`, `role` (`user` | `admin`),
+  `createdAt`. `User` (in the repository) is what the app sees: `name` decrypted, everything else the same (including
+  `passwordHash`, so a `User` is never sent or logged as it is).
+  `userIdsByEmail` is a second Map used as an index for login. `structuredClone` on reads was not needed: rows are flat,
+  and `toUser` always returns a new object. `create` throws `EmailTakenError` (`EMAIL_TAKEN`) for a taken email. That
+  check is the real guard (found in review): register does `findByEmail` → `await hash` → `create`, so two parallel
+  registrations can both pass `findByEmail`. Step 09 catches `EmailTakenError` and answers exactly like the
+  `findByEmail` path (no 500, no user-enumeration difference). No `this` inside repository methods
+  (breaks when destructured, the same trap as pino in step 06).
+- **Encrypted at rest: `name` only (user's choice, 07c):** context `users.name:${id}`. `email` stays plain text, because
+  login looks it up; encrypting it would need a blind index (HMAC + a second key) and a second concept in one PR.
+  A blind index can be a separate small step later if wanted. It is also a good interview question.
+- **Shared encryptor and hasher (07c):** `src/app/security.ts` (glue, like `logger.ts`), default bcrypt cost 12.
+- **Seeding (07c):** `SEED_DEMO_ACCOUNTS` (stringbool), default on in development and off in production: the demo
+  passwords are public, so on a real server those accounts would be open doors. Turned on in production, the seed log
+  line is a `warn`. Runs with top-level `await` in `index.ts` before `listen` (two hashes, ~400 ms at startup).
+  Idempotent: existing emails are skipped.
+- **Posts deferred to step 12 (deviation from the 07c plan row):** no code for future steps; the posts Map and
+  repository come with posts CRUD. Wiring the repository into `createApp()` (dependency injection) comes in step 09,
+  the first route that uses it.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -202,7 +222,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Key rotation (07a):** not supported. Changing `DATA_ENCRYPTION_KEY` makes all encrypted values unreadable (with an
   in-memory store that only matters within one run). The `v1.` prefix leaves room for a key ID later.
 - **Encrypted values are not searchable (07a):** a random IV means `encrypt(x)` differs every time, so lookups by an
-  encrypted field need a blind index (HMAC). Decide in 07c whether `email` is encrypted.
+  encrypted field need a blind index (HMAC). Decided in 07c: `email` stays plain text, only `name` is encrypted.
+- **Public user shape (07c → step 09):** `User` contains `passwordHash`, and the logger does not redact that key.
+  Step 09 must map users to a public shape (`id`, `email`, `name`, `role`) before `res.json`, and should add
+  `passwordHash` to the redact keys as a safety net.
 - **User enumeration timing (07b → step 09):** login must run `verify` against a dummy hash when the email does not
   exist, or the faster response reveals which accounts exist. Not in `lib/password` yet; step 09 adds it.
 - **bcrypt CPU on the main thread (07b):** `bcryptjs` async hashing yields between chunks, but it still uses the main
