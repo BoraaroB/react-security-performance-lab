@@ -5,11 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 04 (validation)
-- **In review:** two small side PRs, both waiting for the user to push, open the PR, and merge:
-  `fix/demo-routes-flag` (demo routes only with `ENABLE_DEMO_ROUTES`; this commit was left out of PR 04's merge)
-  and `chore/review-agents` (automatic review agents + plan additions)
-- **Next step:** 04b (`pr/04b-process-errors`): `unhandledRejection` / `uncaughtException` handlers
+- **Last merged step:** 04 (validation), plus side PRs `fix/demo-routes-flag` (#7) and `chore/review-agents` (#6)
+- **In review:** 04b (`pr/04b-process-errors`): crash handlers in `lib/graceful-shutdown`
+- **Next step:** 05 (`pr/05-security-headers-cors`): helmet, CORS allowlist with credentials, body size limit
 
 ## How to resume after `/clear`
 
@@ -28,6 +26,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | – | Smaller PR budget | ✅ PR #3 (`chore/smaller-prs`) | docs only |
 | 03 | Error handling | ✅ PR #4 | `lib/errors` = `core.ts` (AppError, toAppError, toErrorBody, sourceLocation) + `express.ts` (404 + error handler) |
 | 04 | Validation | ✅ PR #5 | `lib/validation` = `core.ts` (`validateRequest`) + `express.ts` (`validate()`); demo routes `/api/demo/validation` |
+| – | Demo routes flag | ✅ PR #7 (`fix/demo-routes-flag`) | `/api/demo/*` only with `ENABLE_DEMO_ROUTES` |
+| – | Review agents | ✅ PR #6 (`chore/review-agents`) | `code-reviewer` + `security-reviewer`, `.env` read deny, plan additions |
+| 04b | Process errors | 🔍 `pr/04b-process-errors` | `uncaughtException` / `unhandledRejection` → fatal log, graceful shutdown, exit 1 |
 
 ## Decisions (and why)
 
@@ -68,6 +69,12 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Demo routes:** `/api/demo/validation` (POST body, GET query) is not in the API contract; it exists to try validation
   with curl. All `/api/demo/*` routes are mounted only when `ENABLE_DEMO_ROUTES` is on (default: on in development,
   off in production), because demo routes are extra attack surface. Docker (step 32) can turn them on explicitly.
+- **Crash handling (step 04b):** lives in `lib/graceful-shutdown` (option `handleProcessErrors`, default on), not in a new
+  module, because it must end in the same shutdown. `uncaughtException` / `unhandledRejection` → `logger.fatal` with the
+  stack → graceful shutdown → exit 1. The exit code is sticky and also set as `process.exitCode`: a crash during a SIGTERM
+  shutdown, or cleanup that hangs, still exits 1. The force-exit timer is armed before any logging.
+  `src/index.ts` also handles the Express 5 `app.listen` error (EADDRINUSE) → fatal log, exit 1.
+  No demo route crashes the server on purpose (it would be a DoS button); it is tested with a temporary script.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -79,6 +86,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Known gaps (fixed in later steps)
 
+- **Keep-alive during shutdown (found in 04b review):** after `server.close()`, a client with an already open keep-alive
+  connection can keep sending requests and they are still served until the force-exit timeout (10 s). Applies to SIGTERM
+  and to crashes. Fix idea: send `Connection: close` on every response once shutdown starts. Small side PR or with Docker (step 31).
 - No route throws a 500 yet, so the 500 path was only tested with a temporary script (see `docs/prs/03-error-handling.md`).
 - The request log line shows the body/query AFTER validation (it is written when the response finishes),
   so stripped fields (e.g. an attempted `role: "admin"`) are not visible in the log. Accepted for now.
