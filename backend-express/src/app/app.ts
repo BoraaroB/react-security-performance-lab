@@ -23,7 +23,7 @@ export function createApp() {
   app.use(express.json());
 
   app.use('/api/health', healthRouter);
-  app.use('/api/demo', demoRouter);
+  if (config.enableDemoRoutes) app.use('/api/demo', demoRouter);
 
   // Must come after all routes: 404 for anything unmatched, then one handler that turns every error into JSON.
   app.use(notFoundHandler());
