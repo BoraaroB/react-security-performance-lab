@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 02 (request logger)
-- **In review:** 03 (`pr/03-error-handling`): waiting for the user to push, open the PR, and merge
-- **Next step:** 04 (`pr/04-validation`): Zod middleware for body/params/query, `VALIDATION_ERROR` with `details`
+- **Last merged step:** 03 (error handling)
+- **In review:** 04 (`pr/04-validation`): waiting for the user to push, open the PR, and merge
+- **Next step:** 05 (`pr/05-security-headers-cors`): helmet, CORS allowlist with credentials, body size limit
 
 ## How to resume after `/clear`
 
@@ -24,7 +24,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 01 | Express skeleton | ✅ PR #1 | Added `lib/graceful-shutdown` as an extra portable module (not in the original plan) |
 | 02 | Request logger | ✅ PR #2 | `lib/logger` = `core.ts` (pino + redaction) + `express.ts` (pino-http adapter) |
 | – | Smaller PR budget | ✅ PR #3 (`chore/smaller-prs`) | docs only |
-| 03 | Error handling | 🔍 PR in review | `lib/errors` = `core.ts` (AppError, toAppError, toErrorBody, sourceLocation) + `express.ts` (404 + error handler) |
+| 03 | Error handling | ✅ PR #4 | `lib/errors` = `core.ts` (AppError, toAppError, toErrorBody, sourceLocation) + `express.ts` (404 + error handler) |
+| 04 | Validation | 🔍 PR in review | `lib/validation` = `core.ts` (`validateRequest`) + `express.ts` (`validate()`); demo routes `/api/demo/validation` |
 
 ## Decisions (and why)
 
@@ -49,6 +50,13 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Error logs:** the error handler logs through `req.log` (so lines carry `reqId`): 4xx → one `warn` line `CODE: message`;
   5xx → `error` with `err` (stack) and `source` (`file:line:col`, first frame outside `node_modules`).
   The pino-http request line no longer has `err`: for 5xx it only had a made-up "failed with status code 500" error.
+- **Validation (step 04):** `validate({ params?, query?, body? })`. `lib/validation` depends on `lib/errors` (throws `AppError`).
+  Errors of all parts are collected into one `VALIDATION_ERROR`. `details[].field` is the path inside its part (`title`),
+  or the part name (`body`) when the whole part is wrong; there is no `body.` prefix, so the frontend can map it to form fields.
+  Unknown keys are stripped (`z.object`), not rejected. A part without a schema is typed `unknown` in the handler.
+  Express 5 `req.query` has only a getter, so the parsed query is set with `Object.defineProperty` on the request.
+- **Demo routes:** `/api/demo/validation` (POST body, GET query) is not in the API contract; it exists to try validation
+  with curl. It is mounted in all environments, like the planned `/api/demo/rate-limit`.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -61,6 +69,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 ## Known gaps (fixed in later steps)
 
 - No route throws a 500 yet, so the 500 path was only tested with a temporary script (see `docs/prs/03-error-handling.md`).
+- The request log line shows the body/query AFTER validation (it is written when the response finishes),
+  so stripped fields (e.g. an attempted `role: "admin"`) are not visible in the log. Accepted for now.
 - No automated tests yet; verification is typecheck + build + curl smoke tests.
 - `express.json()` uses the default 100 kb body limit → explicit, smaller limit in step 05.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
