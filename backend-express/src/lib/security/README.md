@@ -1,21 +1,25 @@
 # security
 
 HTTP security middleware for a JSON API. `securityHeaders()` sets response headers (via helmet) that tell the browser
-not to run, frame, sniff, or embed API responses, and to use only HTTPS. Step 05b adds CORS here.
+not to run, frame, sniff, or embed API responses, and to use only HTTPS. `corsPolicy()` lets only an exact list of
+browser origins read API responses (with cookies, if enabled).
 
 ## Dependencies
-- npm: `helmet@^8`
+- npm: `helmet@^8`, `cors@^2.8` (+ `@types/cors` as a dev dependency)
 - lib: none
 
 ## Usage
 
 ```ts
-import { securityHeaders } from './lib/security/index.js';
+import { corsPolicy, securityHeaders } from './lib/security/index.js';
 
-app.use(securityHeaders()); // early, so every response (404 and errors too) gets the headers
+// Early, before the body parser and routes, so every response (404 and errors too) gets the headers.
+app.use(securityHeaders());
+app.use(corsPolicy({ allowedOrigins: ['https://app.example.com'], credentials: true }));
 ```
 
-NestJS: `app.use(securityHeaders())` in `main.ts`. helmet uses plain Node `req`/`res`, so no adapter is needed.
+NestJS: `app.use(...)` the same two calls in `main.ts` (instead of `app.enableCors()`). Both use plain Node `req`/`res`,
+so no adapter is needed.
 
 ## Headers it sends
 
@@ -32,7 +36,23 @@ NestJS: `app.use(securityHeaders())` in `main.ts`. helmet uses plain Node `req`/
 helmet also sends `Cross-Origin-Opener-Policy`, `Origin-Agent-Cluster`, `X-DNS-Prefetch-Control`, `X-Download-Options`,
 and `X-Permitted-Cross-Domain-Policies`, and removes `X-Powered-By`.
 
+## `corsPolicy` options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `allowedOrigins` | `string[]` | required | Exact origins (`https://host[:port]`). Invalid entries throw at startup. `[]` = no cross-origin access |
+| `credentials` | `boolean` | `false` | Send `Access-Control-Allow-Credentials: true`, so the browser sends and accepts cookies |
+| `allowedHeaders` | `string[]` | `Content-Type`, `Authorization` | Request headers the page may send |
+| `exposedHeaders` | `string[]` | `X-Request-Id` | Response headers the page's JavaScript may read |
+
+Preflight answers are cached by the browser for 10 minutes (`Access-Control-Max-Age: 600`).
+
 ## Notes
+- CORS only decides whether the **browser** lets a page **read** the response. A simple request (e.g. a form POST)
+  from a disallowed origin is not preflighted, so it still reaches your handlers; `curl` ignores CORS. Protect writes with CSRF checks.
+- Use only `https://` origins in production: a script injected into a plain-HTTP page could read credentialed responses.
+- Origins are compared as exact strings: `https://app.example.com/` (trailing slash) or `HTTPS://App.example.com`
+  would never match, so they are rejected at startup. `*`, `null`, and regexes are not supported on purpose.
 - This policy is for an API only. A server that returns HTML pages needs a CSP that allows its own scripts and styles
   (helmet's defaults are a good start).
 - HSTS with `includeSubDomains` affects every subdomain of the host. Check that all of them support HTTPS before production.

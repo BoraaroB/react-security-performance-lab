@@ -25,8 +25,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 03 | `pr/03-error-handling` | `AppError`, central error handler, 404, one JSON error format, no stack traces in responses; errors logged with request ID and source location (`file:line`) | `lib/errors` | S3, DX | ✅ |
 | 04 | `pr/04-validation` | Zod middleware for body/params/query, `VALIDATION_ERROR` with `details` | `lib/validation` | S1, S3 | ✅ |
 | 04b | `pr/04b-process-errors` | `unhandledRejection` / `uncaughtException` handlers: log as `fatal` with the stack, then exit through graceful shutdown with a **non-zero** exit code, so Docker/systemd restart it and alerts fire (today a clean finish always exits 0, even after a crash). A process in an unknown state must not keep serving; a listener for `unhandledRejection` disables Node's default crash, so the handler must always end in an exit | `lib/graceful-shutdown` (extended) | S3, DX | ✅ |
-| 05a | `pr/05a-security-headers` | helmet with a strict API policy (CSP `default-src 'none'`, HSTS, nosniff, no framing), explicit JSON body size limit (32 kb) | `lib/security` | S1, S3 | 🔍 |
-| 05b | `pr/05b-cors` | CORS allowlist with credentials | `lib/security` (extended) | S1, S3 | ⬜ |
+| 05a | `pr/05a-security-headers` | helmet with a strict API policy (CSP `default-src 'none'`, HSTS, nosniff, no framing), explicit JSON body size limit (32 kb) | `lib/security` | S1, S3 | ✅ |
+| 05b | `pr/05b-cors` | CORS allowlist with credentials (`CORS_ORIGINS`, exact origins only) | `lib/security` (extended) | S1, S3 | 🔍 |
 | 06 | `pr/06-rate-limiting` | `trust proxy` from config as a hop count (`TRUST_PROXY_HOPS`, default `0`) or an IP/CIDR list, never `true` (any client could fake `req.ip` with `X-Forwarded-For` and bypass the limiter), global + strict auth limiter, `429 RATE_LIMITED` + `Retry-After`, demo route | `lib/rate-limit` | S3 | ⬜ |
 | 07 | `pr/07-crypto-store` | AES-256-GCM (data at rest), bcrypt, secure random, in-memory store + seed | `lib/crypto`, `lib/password` | S2, S3 | ⬜ |
 | 08 | `pr/08-jwt-access-token` | Sign/verify JWT (pinned algorithm, iss/aud), `authenticate` middleware | `lib/jwt` | S2 | ⬜ |

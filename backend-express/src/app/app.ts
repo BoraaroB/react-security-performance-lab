@@ -1,7 +1,7 @@
 import express from 'express';
 import { errorHandler, notFoundHandler } from '../lib/errors/index.js';
 import { createRequestLogger } from '../lib/logger/index.js';
-import { securityHeaders } from '../lib/security/index.js';
+import { corsPolicy, securityHeaders } from '../lib/security/index.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { demoRouter } from './routes/demo.js';
@@ -9,7 +9,7 @@ import { healthRouter } from './routes/health.js';
 
 /**
  * Builds the Express app without starting it, so tests can use the app without opening a port.
- * Middleware order matters; later steps add CORS and rate limits here.
+ * Middleware order matters; later steps add rate limits here.
  */
 export function createApp() {
   const app = express();
@@ -23,6 +23,10 @@ export function createApp() {
 
   // Right after the logger, before anything that can fail: 404s and error responses get the headers too.
   app.use(securityHeaders());
+
+  // Before the body parser and routes: preflight (OPTIONS) requests are answered here, and error responses (400, 404,
+  // 413, 500) also carry CORS headers, so the frontend can read the error JSON. Credentials: the refresh-token cookie.
+  app.use(corsPolicy({ allowedOrigins: config.corsOrigins, credentials: true }));
 
   // Explicit limit instead of the 100 kb default: bytes past 32 kb are never buffered in memory or parsed, and the
   // client gets 413. (The rest of the body is still read and thrown away; slow or huge uploads are stopped by timeouts
