@@ -85,9 +85,8 @@ export function createRequestLogger(options: RequestLoggerOptions) {
     // pino-http passes responseTime as a 4th argument here, but its types leave it out.
     customErrorMessage: (req, res, _error, responseTime?: number) => message(req, res, responseTime ?? 0),
     customSuccessObject: (req, res, val: { responseTime: number }) => logObject(req, res, val.responseTime),
-    customErrorObject: (req, res, error, val: { responseTime: number }) => ({
-      ...logObject(req, res, val.responseTime),
-      err: error,
-    }),
+    // No `err` here: for a 5xx, pino-http only has a made-up "failed with status code 500" error with a useless stack.
+    // The real error (stack, file:line) is logged by the error handler (lib/errors), with the same reqId.
+    customErrorObject: (req, res, _error, val: { responseTime: number }) => logObject(req, res, val.responseTime),
   });
 }

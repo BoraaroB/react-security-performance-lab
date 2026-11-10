@@ -1,4 +1,5 @@
 import express from 'express';
+import { errorHandler, notFoundHandler } from '../lib/errors/index.js';
 import { createRequestLogger } from '../lib/logger/index.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
@@ -6,7 +7,7 @@ import { healthRouter } from './routes/health.js';
 
 /**
  * Builds the Express app without starting it, so tests can use the app without opening a port.
- * Middleware order matters; later steps add security headers, CORS, rate limits, and error handling here.
+ * Middleware order matters; later steps add security headers, CORS, and rate limits here.
  */
 export function createApp() {
   const app = express();
@@ -21,6 +22,10 @@ export function createApp() {
   app.use(express.json());
 
   app.use('/api/health', healthRouter);
+
+  // Must come after all routes: 404 for anything unmatched, then one handler that turns every error into JSON.
+  app.use(notFoundHandler());
+  app.use(errorHandler());
 
   return app;
 }
