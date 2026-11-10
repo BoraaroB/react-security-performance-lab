@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 04b (process errors, PR #8)
-- **In review:** 05a (`pr/05a-security-headers`): helmet in `lib/security`, JSON body limit 32 kb
-- **Next step:** 05b (`pr/05b-cors`): CORS allowlist with credentials (extends `lib/security`)
+- **Last merged step:** 05a (security headers, PR #9)
+- **In review:** 05b (`pr/05b-cors`): `corsPolicy()` in `lib/security`, `CORS_ORIGINS`
+- **Next step:** 06 (`pr/06-rate-limiting`): `trust proxy` from config, global + strict auth limiter, `429 RATE_LIMITED`
 
 ## How to resume after `/clear`
 
@@ -29,7 +29,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | – | Demo routes flag | ✅ PR #7 (`fix/demo-routes-flag`) | `/api/demo/*` only with `ENABLE_DEMO_ROUTES` |
 | – | Review agents | ✅ PR #6 (`chore/review-agents`) | `code-reviewer` + `security-reviewer`, `.env` read deny, plan additions |
 | 04b | Process errors | ✅ PR #8 | `uncaughtException` / `unhandledRejection` → fatal log, graceful shutdown, exit 1 |
-| 05a | Security headers | 🔍 `pr/05a-security-headers` | `lib/security/headers.ts` (`securityHeaders()`, helmet); `express.json({ limit: '32kb' })` |
+| 05a | Security headers | ✅ PR #9 | `lib/security/headers.ts` (`securityHeaders()`, helmet); `express.json({ limit: '32kb' })` |
+| 05b | CORS | 🔍 `pr/05b-cors` | `lib/security/cors.ts` (`corsPolicy()`, `isExactOrigin()`); `CORS_ORIGINS` in config |
 
 ## Decisions (and why)
 
@@ -85,6 +86,17 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `app.disable('x-powered-by')` stays (helmet removes the header too; harmless).
 - **Body limit (step 05a):** `express.json({ limit: '32kb' })` in `app.ts` (glue, not a module): fits a 10,000-character
   post even with multi-byte UTF-8. Too big → 413 `PAYLOAD_TOO_LARGE` from the existing error handler.
+- **CORS (step 05b):** `corsPolicy()` wraps the `cors` package (also plain Node `req`/`res`, so Nest uses `app.use`
+  instead of `app.enableCors()`). Origins are an exact-string allowlist, validated at startup by `isExactOrigin()`
+  (no `*`, `null`, regex, path, trailing slash); the config validates `CORS_ORIGINS` with the same function for a clear error.
+  `origin` is always passed as an array: in the cors package a missing `origin` key means `*`, `true` reflects every
+  origin, and `''`/`false` skip CORS. `CORS_ORIGINS` must not be empty (remove it to get the default) and must be
+  `https://` in production (except `localhost`).
+  Default origins: `http://localhost:5173` in dev, `[]` in production. `credentials: true` (refresh cookie, step 10).
+  Fixed `allowedHeaders` (`Content-Type`, `Authorization`) instead of echoing the browser's request; `exposedHeaders`:
+  `X-Request-Id`. `Access-Control-Max-Age: 600`. A disallowed origin is not rejected with 403: it simply gets no
+  `Access-Control-Allow-Origin`, and CSRF (step 11) protects writes. Mounted after `securityHeaders`, before `express.json`,
+  so preflights are answered early and error responses carry CORS headers.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -96,6 +108,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Known gaps (fixed in later steps)
 
+- **CORS header lists (05b):** step 06 must add `Retry-After` to `exposedHeaders`, and step 11 must add the CSRF header
+  (e.g. `X-CSRF-Token`) to `allowedHeaders` in `app.ts`, or the browser blocks them for the frontend.
 - **Keep-alive during shutdown (found in 04b review):** after `server.close()`, a client with an already open keep-alive
   connection can keep sending requests and they are still served until the force-exit timeout (10 s). Applies to SIGTERM
   and to crashes. Fix idea: send `Connection: close` on every response once shutdown starts. Small side PR or with Docker (step 31).
