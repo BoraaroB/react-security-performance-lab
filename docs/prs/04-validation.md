@@ -11,7 +11,9 @@ Topics: API security, and the server-side half of XSS/injection defense (reject 
 - `backend-express/src/lib/validation/express.ts`: `validate()` middleware; typed `req.body`/`params`/`query` in the handler.
 - `backend-express/src/lib/validation/index.ts`, `README.md`: public API and usage.
 - `backend-express/src/app/routes/demo.ts`: `POST` and `GET /api/demo/validation` to try it out.
-- `backend-express/src/app/app.ts`: mounts the demo router.
+- `backend-express/src/app/app.ts`: mounts the demo router only when `config.enableDemoRoutes` is on.
+- `backend-express/src/app/config.ts`, `.env.example`: new optional `ENABLE_DEMO_ROUTES` (default: on in development,
+  off in production). Demo routes are extra attack surface, so production gets them only on purpose.
 
 ## How to test
 ```bash
@@ -39,6 +41,8 @@ app.use(errorHandler()); // from lib/errors: turns VALIDATION_ERROR into JSON
 - `npm run typecheck` and `npm run build`: no errors.
 - Temporary type test (not committed): `req.params.id` is a `number` after `z.coerce.number()`; `req.body.role` and an unvalidated `req.query` are type errors.
 - Smoke test (`curl`): the 7 cases above plus "no body" and "body is an array" → 400 with `field: "body"`. `password` in a failed body is `[REDACTED]` in the log.
+- Demo flag: `/api/demo/validation` → 200 in development, 404 in production, 200 in production with `ENABLE_DEMO_ROUTES=true`;
+  `ENABLE_DEMO_ROUTES=yesplease` stops the server at startup with a clear message.
 
 ## Interview questions
 1. **What is mass assignment?** Copying the whole request body into a model, so a client can set fields it should not

@@ -66,7 +66,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   Unknown keys are stripped (`z.object`), not rejected. A part without a schema is typed `unknown` in the handler.
   Express 5 `req.query` has only a getter, so the parsed query is set with `Object.defineProperty` on the request.
 - **Demo routes:** `/api/demo/validation` (POST body, GET query) is not in the API contract; it exists to try validation
-  with curl. It is mounted in all environments, like the planned `/api/demo/rate-limit`.
+  with curl. All `/api/demo/*` routes are mounted only when `ENABLE_DEMO_ROUTES` is on (default: on in development,
+  off in production), because demo routes are extra attack surface. Docker (step 32) can turn them on explicitly.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
