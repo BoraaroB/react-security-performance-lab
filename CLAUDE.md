@@ -36,7 +36,7 @@ Major versions are pinned to proven ones on purpose. The newest majors (Vite 8, 
 | Part | Versions |
 |---|---|
 | frontend | React 19, Vite 7, TypeScript 5.9, Tailwind 4, React Router 7, react-hook-form 7, Zod 4, DOMPurify 3 |
-| backend-express | Express 5, helmet 8, cors, express-rate-limit 8, jsonwebtoken 9, bcryptjs 3, Zod 4, tsx |
+| backend-express | Express 5, pino (+ pino-http, pino-pretty), helmet 8, cors, express-rate-limit 8, jsonwebtoken 9, bcryptjs 3, Zod 4, tsx |
 | backend-nest | NestJS 11, @nestjs/jwt, @nestjs/throttler 6, helmet, Zod 4 |
 | runtime | Node 24 (`.nvmrc`) |
 
@@ -67,7 +67,7 @@ docs/
 - TypeScript `strict`. No `any` without a comment explaining why.
 - Comments explain **why** (the security or performance reason), not what obvious code does.
 - API errors always carry a stable `code`; the frontend maps messages by `code`, never by text.
-- Error format on both backends: `{ "error": { "code": "STRING", "message": "string", "details"?: [{ "field", "message" }] } }`.
+- Error format on both backends: `{ "error": { "code": "STRING", "message": "string", "details"?: [{ "field", "message" }], "requestId": "string" } }`.
 - The Express backend is ESM (`"type": "module"`), so relative imports use the `.js` extension. Nest is CommonJS.
 - Secrets live only in `.env` (git-ignored). `.env.example` holds placeholders; `node scripts/setup-env.mjs` generates real values.
 
@@ -77,7 +77,8 @@ docs/
 - Every POST/PUT/PATCH/DELETE goes through a CSRF check.
 - Authorization is ALWAYS enforced on the server. Frontend checks only improve the UX.
 - All input is validated with a Zod schema on the server. Unknown fields are stripped (mass-assignment protection).
-- A 500 response never contains a stack trace or internal details.
+- A 500 response never contains a stack trace or internal details. Those go to the server log, tied to the request ID.
+- Never log secrets (passwords, tokens, cookies, `Authorization`). The logger redacts them; see "Logging" in the plan.
 
 ## Commands
 

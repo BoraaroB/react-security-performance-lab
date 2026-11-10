@@ -7,7 +7,7 @@ that Claude Code loads automatically. No application code yet.
 
 ## Changes
 - `CLAUDE.md`: project rules (workflow, English-only, no AI attribution, stack, structure, security rules).
-- `docs/IMPLEMENTATION_PLAN.md`: 30 small steps (Express → frontend → NestJS) plus the shared API contract.
+- `docs/IMPLEMENTATION_PLAN.md`: 31 small steps (Express → frontend → NestJS), logging rules, and the shared API contract.
 - `.claude/skills/next-step/SKILL.md`: implements the next plan step as one small PR, then stops.
 - `.claude/skills/portable-module/SKILL.md`: rules that keep every module copy-paste portable.
 - `.claude/skills/explain-pr/SKILL.md`: explains a PR in plain language and quizzes for interviews.
