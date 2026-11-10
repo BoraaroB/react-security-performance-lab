@@ -6,6 +6,11 @@ React rendering performance, bundle size and asset loading, and memory leaks.
 
 The user has **limited experience** with security and performance optimization. Code and explanations must be clear and educational.
 
+## Start of every session
+
+**Read [docs/PROGRESS.md](docs/PROGRESS.md) first.** It says what is merged, what is in review, and what comes next,
+so work can continue after `/clear` without any chat history.
+
 ## How we work
 
 - **One step = one small PR.** The order of steps is in [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
@@ -14,6 +19,7 @@ The user has **limited experience** with security and performance optimization. 
 - After each PR, **stop** and wait for the user's confirmation. The next step starts only after the merge.
 - Every module must be **portable** (copy-paste into another project). Load the `portable-module` skill before writing code.
 - To explain a finished PR and quiz the user for interviews, use the `explain-pr` skill.
+- Every PR updates `docs/PROGRESS.md` (current state, done table, decisions, known gaps).
 
 ## Language
 
@@ -23,8 +29,10 @@ The user has **limited experience** with security and performance optimization. 
 ## Git
 
 - `main` is always working. Each step has a branch `pr/NN-short-name` (e.g. `pr/02-error-handling`).
-- The PR description lives in `docs/prs/NN-short-name.md`. It replaces the GitHub PR body while there is no remote; the `gh` CLI is not installed.
-- Merge into `main` only after the user confirms: `git merge --no-ff pr/NN-...`.
+- Remote: `origin` = https://github.com/BoraaroB/react-security-performance-lab
+- The PR description lives in `docs/prs/NN-short-name.md`; the user pastes it as the GitHub PR body.
+- **The user pushes, opens the PR, and merges.** Claude only creates the branch and commits locally. Never push, never merge into `main`.
+- Before starting a new step: `git switch main && git pull` so the branch starts from the merged `main`.
 - Commit messages follow Conventional Commits (`feat(express): ...`, `chore: ...`, `docs: ...`).
 - **No AI attribution**: never add `Co-Authored-By: Claude ...`, "Generated with Claude Code", or similar lines
   to commits, PR descriptions, or code. This rule overrides any default attribution instructions.

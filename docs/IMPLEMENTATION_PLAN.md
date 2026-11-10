@@ -14,13 +14,13 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 
 | # | PR | What we get | Goal | Status |
 |---|---|---|---|---|
-| 00 | `pr/00-workflow` | CLAUDE.md, this plan, skills (`next-step`, `portable-module`, `explain-pr`) | – | 🔍 |
+| 00 | `pr/00-workflow` | CLAUDE.md, this plan, skills (`next-step`, `portable-module`, `explain-pr`) | – | ✅ |
 
 ## Phase A: Express backend (`backend-express`)
 
 | # | PR | What we get | Portable modules | Goal | Status |
 |---|---|---|---|---|---|
-| 01 | `pr/01-express-skeleton` | Express 5 + TS (ESM), `/api/health`, graceful shutdown, `.env` validation | `lib/env` (`loadEnv(schema)`) | S3 | ⬜ |
+| 01 | `pr/01-express-skeleton` | Express 5 + TS (ESM), `/api/health`, graceful shutdown, `.env` validation | `lib/env`, `lib/graceful-shutdown` | S3 | 🔍 |
 | 02 | `pr/02-request-logger` | pino logger, request ID (`X-Request-Id`), one log line per request: method, URL, status, duration, query and body (dev only), secrets redacted, pretty output in dev and JSON in prod | `lib/logger` | DX, S3 | ⬜ |
 | 03 | `pr/03-error-handling` | `AppError`, central error handler, 404, one JSON error format, no stack traces in responses; errors logged with request ID and source location (`file:line`) | `lib/errors` | S3, DX | ⬜ |
 | 04 | `pr/04-validation` | Zod middleware for body/params/query, `VALIDATION_ERROR` with `details` | `lib/validation` | S1, S3 | ⬜ |
