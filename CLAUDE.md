@@ -1,4 +1,4 @@
-# CLAUDE.md
+# react-security-performance-lab
 
 Learning project (interview prep): a React 19 frontend and two backends, Express and NestJS, that expose the same API.
 The topics come from [goal.md](goal.md): web security (XSS, CSRF), authentication and authorization, API security,
