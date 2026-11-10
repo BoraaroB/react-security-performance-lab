@@ -20,8 +20,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 
 | # | PR | What we get | Portable modules | Goal | Status |
 |---|---|---|---|---|---|
-| 01 | `pr/01-express-skeleton` | Express 5 + TS (ESM), `/api/health`, graceful shutdown, `.env` validation | `lib/env`, `lib/graceful-shutdown` | S3 | 🔍 |
-| 02 | `pr/02-request-logger` | pino logger, request ID (`X-Request-Id`), one log line per request: method, URL, status, duration, query and body (dev only), secrets redacted, pretty output in dev and JSON in prod | `lib/logger` | DX, S3 | ⬜ |
+| 01 | `pr/01-express-skeleton` | Express 5 + TS (ESM), `/api/health`, graceful shutdown, `.env` validation | `lib/env`, `lib/graceful-shutdown` | S3 | ✅ |
+| 02 | `pr/02-request-logger` | pino logger, request ID (`X-Request-Id`), one log line per request: method, URL, status, duration, query and body (dev only), secrets redacted, pretty output in dev and JSON in prod | `lib/logger` | DX, S3 | 🔍 |
 | 03 | `pr/03-error-handling` | `AppError`, central error handler, 404, one JSON error format, no stack traces in responses; errors logged with request ID and source location (`file:line`) | `lib/errors` | S3, DX | ⬜ |
 | 04 | `pr/04-validation` | Zod middleware for body/params/query, `VALIDATION_ERROR` with `details` | `lib/validation` | S1, S3 | ⬜ |
 | 05 | `pr/05-security-headers-cors` | helmet (CSP, HSTS, ...), CORS allowlist with credentials, body size limit | `lib/security` | S1, S3 | ⬜ |
@@ -62,6 +62,16 @@ The core modules from Express are **copied unchanged** into `src/lib/`. This pro
 | 28 | `pr/28-nest-auth` | JWT guard, register/login/refresh/logout, `CsrfGuard` | S1, S2 | ⬜ |
 | 29 | `pr/29-nest-rbac-posts` | `@Roles()` + `RolesGuard`, posts and admin modules, OAuth | S2 | ⬜ |
 | 30 | `pr/30-wiring-readme` | `npm run dev:nest`, root scripts, README with a "topic → file" map | – | ⬜ |
+
+## Phase D: Docker
+
+Local development stays without Docker (`tsx watch` and Vite HMR are faster). Docker is for running the finished apps
+the way they would run in production.
+
+| # | PR | What we get | Goal | Status |
+|---|---|---|---|---|
+| 31 | `pr/31-docker-backends` | Dockerfile for Express and Nest: multi-stage build, non-root user, small base image, `HEALTHCHECK` on `/api/health`, `.dockerignore` (no `.env` in the image) | S3 | ⬜ |
+| 32 | `pr/32-docker-compose` | Frontend served by nginx (CSP and security headers, asset caching, compression), `docker-compose.yml` for all three apps | S1, P2 | ⬜ |
 
 ---
 
