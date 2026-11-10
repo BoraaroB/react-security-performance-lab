@@ -23,9 +23,10 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 01 | `pr/01-express-skeleton` | Express 5 + TS (ESM), `/api/health`, graceful shutdown, `.env` validation | `lib/env`, `lib/graceful-shutdown` | S3 | ✅ |
 | 02 | `pr/02-request-logger` | pino logger, request ID (`X-Request-Id`), one log line per request: method, URL, status, duration, query and body (dev only), secrets redacted, pretty output in dev and JSON in prod | `lib/logger` | DX, S3 | ✅ |
 | 03 | `pr/03-error-handling` | `AppError`, central error handler, 404, one JSON error format, no stack traces in responses; errors logged with request ID and source location (`file:line`) | `lib/errors` | S3, DX | ✅ |
-| 04 | `pr/04-validation` | Zod middleware for body/params/query, `VALIDATION_ERROR` with `details` | `lib/validation` | S1, S3 | 🔍 |
+| 04 | `pr/04-validation` | Zod middleware for body/params/query, `VALIDATION_ERROR` with `details` | `lib/validation` | S1, S3 | ✅ |
+| 04b | `pr/04b-process-errors` | `unhandledRejection` / `uncaughtException` handlers: log as `fatal` with the stack, then exit through graceful shutdown with a **non-zero** exit code, so Docker/systemd restart it and alerts fire (today `shutdown()` always exits 0). A process in an unknown state must not keep serving; a listener for `unhandledRejection` disables Node's default crash, so the handler must always end in an exit | `lib/graceful-shutdown` (extended) | S3, DX | ⬜ |
 | 05 | `pr/05-security-headers-cors` | helmet (CSP, HSTS, ...), CORS allowlist with credentials, body size limit | `lib/security` | S1, S3 | ⬜ |
-| 06 | `pr/06-rate-limiting` | Global + strict auth limiter, `429 RATE_LIMITED` + `Retry-After`, demo route | `lib/rate-limit` | S3 | ⬜ |
+| 06 | `pr/06-rate-limiting` | `trust proxy` from config as a hop count (`TRUST_PROXY_HOPS`, default `0`) or an IP/CIDR list, never `true` (any client could fake `req.ip` with `X-Forwarded-For` and bypass the limiter), global + strict auth limiter, `429 RATE_LIMITED` + `Retry-After`, demo route | `lib/rate-limit` | S3 | ⬜ |
 | 07 | `pr/07-crypto-store` | AES-256-GCM (data at rest), bcrypt, secure random, in-memory store + seed | `lib/crypto`, `lib/password` | S2, S3 | ⬜ |
 | 08 | `pr/08-jwt-access-token` | Sign/verify JWT (pinned algorithm, iss/aud), `authenticate` middleware | `lib/jwt` | S2 | ⬜ |
 | 09 | `pr/09-register-login` | `POST /auth/register`, `/auth/login`, `GET /auth/me`, user-enumeration protection | – | S2 | ⬜ |
@@ -72,6 +73,16 @@ the way they would run in production.
 |---|---|---|---|---|
 | 31 | `pr/31-docker-backends` | Dockerfile for Express and Nest: multi-stage build, non-root user, small base image, `HEALTHCHECK` on `/api/health`, `.dockerignore` (no `.env` in the image) | S3 | ⬜ |
 | 32 | `pr/32-docker-compose` | Frontend served by nginx (CSP and security headers, asset caching, compression), `docker-compose.yml` for all three apps | S1, P2 | ⬜ |
+
+## Phase E: Quality (tests, lint, CI)
+
+Kept for the end on purpose: until then every PR is checked by typecheck, build, curl smoke tests, and the review agents.
+
+| # | PR | What we get | Goal | Status |
+|---|---|---|---|---|
+| 33 | `pr/33-backend-lint` | ESLint (typescript-eslint, strict) for both backends, `npm run lint` | DX | ⬜ |
+| 34 | `pr/34-tests` | Vitest + supertest: error handler, validation, auth, CSRF, RBAC (split into `34a`, `34b`, ... by module) | S2, S3 | ⬜ |
+| 35 | `pr/35-ci` | GitHub Actions: typecheck, lint, test, build, `npm audit --audit-level=high` on every PR. Safe workflow: `pull_request` trigger only, `permissions: contents: read`, actions pinned to a commit SHA, `npm ci` | S3, DX | ⬜ |
 
 ---
 

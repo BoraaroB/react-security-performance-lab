@@ -21,6 +21,8 @@ so work can continue after `/clear` without any chat history.
 - Every module must be **portable** (copy-paste into another project). Load the `portable-module` skill before writing code.
 - To explain a finished PR and quiz the user for interviews, use the `explain-pr` skill.
 - Every PR updates `docs/PROGRESS.md` (current state, done table, decisions, known gaps).
+- Before every commit (steps and side branches alike), the `code-reviewer` and `security-reviewer` agents (`.claude/agents/`)
+  review the staged diff automatically (part of `next-step`). Their findings and what was done about them go into the PR description.
 
 ## Language
 
@@ -32,6 +34,7 @@ so work can continue after `/clear` without any chat history.
 - `main` is always working. Each step has a branch `pr/NN-short-name` (e.g. `pr/02-error-handling`).
 - Remote: `origin` = https://github.com/BoraaroB/react-security-performance-lab
 - The PR description lives in `docs/prs/NN-short-name.md`; the user pastes it as the GitHub PR body.
+- Side branches (`chore/*`, `fix/*`) have no plan step; their description lives in `docs/prs/<branch-name-with-dashes>.md`.
 - **The user pushes, opens the PR, and merges.** Claude only creates the branch and commits locally. Never push, never merge into `main`.
 - Before starting a new step: `git switch main && git pull` so the branch starts from the merged `main`.
 - Commit messages follow Conventional Commits (`feat(express): ...`, `chore: ...`, `docs: ...`).
