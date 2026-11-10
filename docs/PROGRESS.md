@@ -5,15 +5,17 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 03 (error handling)
-- **In review:** 04 (`pr/04-validation`): waiting for the user to push, open the PR, and merge
-- **Next step:** 05 (`pr/05-security-headers-cors`): helmet, CORS allowlist with credentials, body size limit
+- **Last merged step:** 04 (validation)
+- **In review:** two small side PRs, both waiting for the user to push, open the PR, and merge:
+  `fix/demo-routes-flag` (demo routes only with `ENABLE_DEMO_ROUTES`; this commit was left out of PR 04's merge)
+  and `chore/review-agents` (automatic review agents + plan additions)
+- **Next step:** 04b (`pr/04b-process-errors`): `unhandledRejection` / `uncaughtException` handlers
 
 ## How to resume after `/clear`
 
 1. `git switch main && git pull`
-2. Check whether the "In review" step is merged: its commits appear in `git log origin/main --oneline`
-   (or `git merge-base --is-ancestor pr/NN-... origin/main`). If unsure, ask the user.
+2. Check that EVERY branch listed under "In review" (`pr/*`, `chore/*`, `fix/*`) is merged:
+   `git merge-base --is-ancestor <branch> origin/main`. If unsure, ask the user.
 3. Merged → run the `next-step` skill. Not merged → ask the user before doing anything else.
 
 ## Done
@@ -25,13 +27,18 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 02 | Request logger | ✅ PR #2 | `lib/logger` = `core.ts` (pino + redaction) + `express.ts` (pino-http adapter) |
 | – | Smaller PR budget | ✅ PR #3 (`chore/smaller-prs`) | docs only |
 | 03 | Error handling | ✅ PR #4 | `lib/errors` = `core.ts` (AppError, toAppError, toErrorBody, sourceLocation) + `express.ts` (404 + error handler) |
-| 04 | Validation | 🔍 PR in review | `lib/validation` = `core.ts` (`validateRequest`) + `express.ts` (`validate()`); demo routes `/api/demo/validation` |
+| 04 | Validation | ✅ PR #5 | `lib/validation` = `core.ts` (`validateRequest`) + `express.ts` (`validate()`); demo routes `/api/demo/validation` |
 
 ## Decisions (and why)
 
 - **Pinned majors:** Vite 7, TypeScript 5.9, NestJS 11, React Router 7. The newest majors (Vite 8, TS 7, Nest 12, RR 8) were too new to rely on.
 - **Logger:** pino over winston: faster, built-in redaction of secrets, `pino-http` for request logs.
 - **Git flow:** Claude creates the branch and commits locally. The user pushes, opens the PR, and merges.
+- **Automatic review (added after PR 04):** before every commit, `next-step` runs two read-only agents in parallel,
+  `code-reviewer` and `security-reviewer` (`.claude/agents/`), on the staged diff. Claude checks each finding, fixes the valid
+  ones, and lists the outcome in a `## Review` section of the PR description. They do not replace the user's own review.
+- **Plan additions (after PR 04):** step 04b (process-level error handlers), `trust proxy` in step 06, and Phase E
+  (backend ESLint, tests, CI with `npm audit`). Tests are at the end on purpose (the user's choice).
 - **No AI attribution** in commits or PR descriptions.
 - **Language:** everything in the repo is English; chat with the user is in Serbian.
 - **Dependencies per step:** each PR adds only the npm packages it uses.
@@ -71,6 +78,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - No route throws a 500 yet, so the 500 path was only tested with a temporary script (see `docs/prs/03-error-handling.md`).
 - The request log line shows the body/query AFTER validation (it is written when the response finishes),
   so stripped fields (e.g. an attempted `role: "admin"`) are not visible in the log. Accepted for now.
-- No automated tests yet; verification is typecheck + build + curl smoke tests.
+- No automated tests yet; verification is typecheck + build + curl smoke tests + review agents → Phase E (steps 33–35).
+- The review agents are read-only and keep away from `.env` only because their instructions say so. A project
+  `.claude/settings.json` with `permissions.deny` for `Read(**/.env)` would enforce it; the user decides.
 - `express.json()` uses the default 100 kb body limit → explicit, smaller limit in step 05.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
