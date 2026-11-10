@@ -10,9 +10,9 @@ The goal is that the user can follow **every** change. Smaller is better.
 ## 1. Pick the step
 
 1. Read `docs/IMPLEMENTATION_PLAN.md`. Take the first ⬜ row unless the user named a step number.
-2. Check `git status` and `git branch`:
-   - If the previous step's `pr/*` branch is not merged, **ask** the user whether to merge it (`git merge --no-ff`).
-     Do not continue without an answer.
+2. Run `git switch main && git pull`, then check `git status` and `git log`:
+   - If the previous step's `pr/*` branch is not merged into `origin/main` yet, **ask** the user to merge it first.
+     Do not continue without an answer. Never merge or push yourself.
    - Untracked files that belong to future steps (e.g. another project's `package.json`) may stay.
      Commit only what belongs to this step.
 3. Create the branch from `main`: `git switch -c pr/NN-short-name` (name from the plan).
@@ -62,17 +62,14 @@ typecheck/build/smoke test: what was run and what came out.
 
 ## 5. Commit and finish
 
-1. In `docs/IMPLEMENTATION_PLAN.md`, set the step's status to 🔍. It becomes ✅ only after the merge.
+1. In `docs/IMPLEMENTATION_PLAN.md`, set this step's status to 🔍 and the previous (merged) step's status to ✅.
 2. `git add` only this step's files. The commit message follows Conventional Commits,
    e.g. `feat(express): add central error handler`.
    **No AI attribution**: no `Co-Authored-By: Claude`, no "Generated with Claude Code", in commits or PR descriptions.
-3. If a GitHub remote and `gh` exist, push and run `gh pr create` with the body from `docs/prs/NN-...md`. Otherwise keep it local.
+3. **Do not push.** The user pushes, opens the PR on GitHub, and merges.
 4. **STOP.** Tell the user briefly (in the user's chat language):
    - what was done (1–2 sentences) and the branch name,
-   - how to review it: `git diff main...pr/NN-...` or the file `docs/prs/NN-...md`,
+   - how to review it locally: `git diff main...pr/NN-...`,
+   - how to publish it: `git push -u origin pr/NN-...`, then open the PR and paste `docs/prs/NN-...md` as the body,
    - what the next step is.
-   Do not start the next step until the user confirms.
-
-## After confirmation ("ok", "merge", "može")
-
-`git switch main && git merge --no-ff pr/NN-...`, then set the step to ✅ in the plan and commit `docs: mark step NN as done`.
+   Do not start the next step until the user says the PR is merged.

@@ -23,8 +23,10 @@ The user has **limited experience** with security and performance optimization. 
 ## Git
 
 - `main` is always working. Each step has a branch `pr/NN-short-name` (e.g. `pr/02-error-handling`).
-- The PR description lives in `docs/prs/NN-short-name.md`. It replaces the GitHub PR body while there is no remote; the `gh` CLI is not installed.
-- Merge into `main` only after the user confirms: `git merge --no-ff pr/NN-...`.
+- Remote: `origin` = https://github.com/BoraaroB/react-security-performance-lab
+- The PR description lives in `docs/prs/NN-short-name.md`; the user pastes it as the GitHub PR body.
+- **The user pushes, opens the PR, and merges.** Claude only creates the branch and commits locally. Never push, never merge into `main`.
+- Before starting a new step: `git switch main && git pull` so the branch starts from the merged `main`.
 - Commit messages follow Conventional Commits (`feat(express): ...`, `chore: ...`, `docs: ...`).
 - **No AI attribution**: never add `Co-Authored-By: Claude ...`, "Generated with Claude Code", or similar lines
   to commits, PR descriptions, or code. This rule overrides any default attribution instructions.
