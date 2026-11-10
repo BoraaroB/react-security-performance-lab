@@ -32,6 +32,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **No AI attribution** in commits or PR descriptions.
 - **Language:** everything in the repo is English; chat with the user is in Serbian.
 - **Dependencies per step:** each PR adds only the npm packages it uses.
+- **Docker:** added as Phase D (steps 31–32) at the end of the plan. Local development stays without Docker; logs go to stdout (no log files), which is what Docker expects.
 - **pino 10 / pino-http 11 / pino-pretty 13:** `pino-pretty` is a dev dependency; it is loaded only when `pretty: true` (non-production).
 - **Request ID:** a new UUID per request by default. An incoming `X-Request-Id` is reused only with
   `trustIncomingRequestId: true` (behind a trusted proxy) and only if it matches `^[\w-]{1,64}$` (no log injection).

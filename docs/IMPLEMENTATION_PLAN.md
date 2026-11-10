@@ -63,6 +63,16 @@ The core modules from Express are **copied unchanged** into `src/lib/`. This pro
 | 29 | `pr/29-nest-rbac-posts` | `@Roles()` + `RolesGuard`, posts and admin modules, OAuth | S2 | ⬜ |
 | 30 | `pr/30-wiring-readme` | `npm run dev:nest`, root scripts, README with a "topic → file" map | – | ⬜ |
 
+## Phase D: Docker
+
+Local development stays without Docker (`tsx watch` and Vite HMR are faster). Docker is for running the finished apps
+the way they would run in production.
+
+| # | PR | What we get | Goal | Status |
+|---|---|---|---|---|
+| 31 | `pr/31-docker-backends` | Dockerfile for Express and Nest: multi-stage build, non-root user, small base image, `HEALTHCHECK` on `/api/health`, `.dockerignore` (no `.env` in the image) | S3 | ⬜ |
+| 32 | `pr/32-docker-compose` | Frontend served by nginx (CSP and security headers, asset caching, compression), `docker-compose.yml` for all three apps | S1, P2 | ⬜ |
+
 ---
 
 ## Logging (both backends)
