@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 00 (workflow, plan, skills)
-- **In review:** 01 (`pr/01-express-skeleton`): waiting for the user to push, open the PR, and merge
-- **Next step:** 02 (`pr/02-request-logger`): pino logger, request ID, redaction
+- **Last merged step:** 01 (Express skeleton)
+- **In review:** 02 (`pr/02-request-logger`): waiting for the user to push, open the PR, and merge
+- **Next step:** 03 (`pr/03-error-handling`): `AppError`, central error handler, JSON 404, error logs with request ID
 
 ## How to resume after `/clear`
 
@@ -21,7 +21,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | # | Step | How it landed | Notes |
 |---|---|---|---|
 | 00 | Workflow, plan, skills | pushed directly to `main` (no PR) | `git branch -M main` was run while on the PR branch; accepted as is |
-| 01 | Express skeleton | 🔍 PR in review | Added `lib/graceful-shutdown` as an extra portable module (not in the original plan) |
+| 01 | Express skeleton | ✅ PR #1 | Added `lib/graceful-shutdown` as an extra portable module (not in the original plan) |
+| 02 | Request logger | 🔍 PR in review | `lib/logger` = `core.ts` (pino + redaction) + `express.ts` (pino-http adapter) |
 
 ## Decisions (and why)
 
@@ -31,6 +32,13 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **No AI attribution** in commits or PR descriptions.
 - **Language:** everything in the repo is English; chat with the user is in Serbian.
 - **Dependencies per step:** each PR adds only the npm packages it uses.
+- **pino 10 / pino-http 11 / pino-pretty 13:** `pino-pretty` is a dev dependency; it is loaded only when `pretty: true` (non-production).
+- **Request ID:** a new UUID per request by default. An incoming `X-Request-Id` is reused only with
+  `trustIncomingRequestId: true` (behind a trusted proxy) and only if it matches `^[\w-]{1,64}$` (no log injection).
+- **Request log shape:** `req.log` is a child logger with only `reqId` (`quietReqLogger`), so handler logs stay short.
+  The request line logs the path without the query string; `query` and `body` are logged only when `logPayloads` is on (dev).
+- **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
+  Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
 ## Local state that is not in git
 
@@ -41,5 +49,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 ## Known gaps (fixed in later steps)
 
 - Unknown routes return Express's default HTML 404 page → JSON 404 in step 03.
+- Invalid JSON bodies and thrown errors go to Express's default handler (stack printed to the console, HTML response) → step 03.
+  The request line itself is already logged correctly (`WARN POST ... → 400`).
+- The step 03 error handler should log through `req.log` so error lines carry `reqId`.
 - `express.json()` uses the default 100 kb body limit → explicit, smaller limit in step 05.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
