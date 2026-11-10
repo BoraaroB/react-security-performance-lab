@@ -1,6 +1,7 @@
 import express from 'express';
 import { errorHandler, notFoundHandler } from '../lib/errors/index.js';
 import { createRequestLogger } from '../lib/logger/index.js';
+import { securityHeaders } from '../lib/security/index.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { demoRouter } from './routes/demo.js';
@@ -8,7 +9,7 @@ import { healthRouter } from './routes/health.js';
 
 /**
  * Builds the Express app without starting it, so tests can use the app without opening a port.
- * Middleware order matters; later steps add security headers, CORS, and rate limits here.
+ * Middleware order matters; later steps add CORS and rate limits here.
  */
 export function createApp() {
   const app = express();
@@ -20,7 +21,14 @@ export function createApp() {
   // Payloads are logged only outside production: they may contain personal data.
   app.use(createRequestLogger({ logger, logPayloads: !config.isProduction }));
 
-  app.use(express.json());
+  // Right after the logger, before anything that can fail: 404s and error responses get the headers too.
+  app.use(securityHeaders());
+
+  // Explicit limit instead of the 100 kb default: bytes past 32 kb are never buffered in memory or parsed, and the
+  // client gets 413. (The rest of the body is still read and thrown away; slow or huge uploads are stopped by timeouts
+  // or a reverse proxy, not by this.) The biggest planned request, a post (10,000 characters, up to ~30 kb in UTF-8
+  // with non-Latin text), still fits.
+  app.use(express.json({ limit: '32kb' }));
 
   app.use('/api/health', healthRouter);
   if (config.enableDemoRoutes) app.use('/api/demo', demoRouter);

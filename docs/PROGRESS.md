@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 04 (validation), plus side PRs `fix/demo-routes-flag` (#7) and `chore/review-agents` (#6)
-- **In review:** 04b (`pr/04b-process-errors`): crash handlers in `lib/graceful-shutdown`
-- **Next step:** 05 (`pr/05-security-headers-cors`): helmet, CORS allowlist with credentials, body size limit
+- **Last merged step:** 04b (process errors, PR #8)
+- **In review:** 05a (`pr/05a-security-headers`): helmet in `lib/security`, JSON body limit 32 kb
+- **Next step:** 05b (`pr/05b-cors`): CORS allowlist with credentials (extends `lib/security`)
 
 ## How to resume after `/clear`
 
@@ -28,7 +28,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 04 | Validation | ✅ PR #5 | `lib/validation` = `core.ts` (`validateRequest`) + `express.ts` (`validate()`); demo routes `/api/demo/validation` |
 | – | Demo routes flag | ✅ PR #7 (`fix/demo-routes-flag`) | `/api/demo/*` only with `ENABLE_DEMO_ROUTES` |
 | – | Review agents | ✅ PR #6 (`chore/review-agents`) | `code-reviewer` + `security-reviewer`, `.env` read deny, plan additions |
-| 04b | Process errors | 🔍 `pr/04b-process-errors` | `uncaughtException` / `unhandledRejection` → fatal log, graceful shutdown, exit 1 |
+| 04b | Process errors | ✅ PR #8 | `uncaughtException` / `unhandledRejection` → fatal log, graceful shutdown, exit 1 |
+| 05a | Security headers | 🔍 `pr/05a-security-headers` | `lib/security/headers.ts` (`securityHeaders()`, helmet); `express.json({ limit: '32kb' })` |
 
 ## Decisions (and why)
 
@@ -75,6 +76,15 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   shutdown, or cleanup that hangs, still exits 1. The force-exit timer is armed before any logging.
   `src/index.ts` also handles the Express 5 `app.listen` error (EADDRINUSE) → fatal log, exit 1.
   No demo route crashes the server on purpose (it would be a DoS button); it is tested with a temporary script.
+- **Step 05 split (user's choice):** 05a = helmet + body limit, 05b = CORS. One concept per PR.
+- **Security headers (step 05a):** `lib/security` has no `express.ts` adapter: helmet middleware uses plain Node `req`/`res`,
+  so `securityHeaders()` works in Express and Nest as is. The policy is for an API only: CSP `default-src 'none';
+  frame-ancestors 'none'` (helmet's default CSP is for HTML sites), `X-Frame-Options: DENY`; the rest are helmet defaults
+  (HSTS 1 year + `includeSubDomains`, nosniff, CORP `same-origin`, `Referrer-Policy: no-referrer`). No options on purpose:
+  an HTML server should use helmet directly. Mounted right after the request logger, so 404/413/500 responses get the headers too.
+  `app.disable('x-powered-by')` stays (helmet removes the header too; harmless).
+- **Body limit (step 05a):** `express.json({ limit: '32kb' })` in `app.ts` (glue, not a module): fits a 10,000-character
+  post even with multi-byte UTF-8. Too big → 413 `PAYLOAD_TOO_LARGE` from the existing error handler.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -95,5 +105,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - No automated tests yet; verification is typecheck + build + curl smoke tests + review agents → Phase E (steps 33–35).
 - Shell commands (`cat .env`) are not covered by the `Read(...)` deny rules in `.claude/settings.json`; only Claude Code's
   built-in file tools are. Full coverage would need Claude Code's Bash sandbox (not enabled; the user decides).
-- `express.json()` uses the default 100 kb body limit → explicit, smaller limit in step 05.
+- **JSON limit vs post size (found in 05a review):** the 32 kb limit in `app.ts` assumes post content ≤ 10,000 characters.
+  Step 12 must keep that limit in its Zod schema, or raise the JSON limit; otherwise valid posts get 413 instead of `VALIDATION_ERROR`.
+- No `Cache-Control: no-store` on API responses yet (helmet does not set it). Responses with tokens or user data
+  should not be cached by the browser or proxies → add it with the auth routes (steps 09–10).
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
