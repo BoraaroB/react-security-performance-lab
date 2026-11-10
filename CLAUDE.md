@@ -15,7 +15,8 @@ so work can continue after `/clear` without any chat history.
 
 - **One step = one small PR.** The order of steps is in [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
   Only do the NEXT step. Never skip or merge steps. Use the `next-step` skill.
-- A PR is at most **~300 changed lines** (lock files excluded). If it would be bigger, split it into `NNa`, `NNb` and ask the user.
+- A PR is at most **~150 changed lines of code** (lock files and `docs/` excluded) and introduces **one new concept**.
+  If it would be bigger, split it into `NNa`, `NNb`, ... and ask the user. Smaller is always better: the user must be able to follow every line.
 - After each PR, **stop** and wait for the user's confirmation. The next step starts only after the merge.
 - Every module must be **portable** (copy-paste into another project). Load the `portable-module` skill before writing code.
 - To explain a finished PR and quiz the user for interviews, use the `explain-pr` skill.
