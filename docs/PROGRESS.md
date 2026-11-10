@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 05a (security headers, PR #9)
-- **In review:** 05b (`pr/05b-cors`): `corsPolicy()` in `lib/security`, `CORS_ORIGINS`
-- **Next step:** 06 (`pr/06-rate-limiting`): `trust proxy` from config, global + strict auth limiter, `429 RATE_LIMITED`
+- **Last merged step:** 05b (CORS, PR #10)
+- **In review:** 06 (`pr/06-rate-limiting`): `lib/rate-limit`, `TRUST_PROXY`, global limiter, demo route
+- **Next step:** 07 (`pr/07-crypto-store`): AES-256-GCM, bcrypt, secure random, in-memory store + seed
 
 ## How to resume after `/clear`
 
@@ -30,7 +30,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | – | Review agents | ✅ PR #6 (`chore/review-agents`) | `code-reviewer` + `security-reviewer`, `.env` read deny, plan additions |
 | 04b | Process errors | ✅ PR #8 | `uncaughtException` / `unhandledRejection` → fatal log, graceful shutdown, exit 1 |
 | 05a | Security headers | ✅ PR #9 | `lib/security/headers.ts` (`securityHeaders()`, helmet); `express.json({ limit: '32kb' })` |
-| 05b | CORS | 🔍 `pr/05b-cors` | `lib/security/cors.ts` (`corsPolicy()`, `isExactOrigin()`); `CORS_ORIGINS` in config |
+| 05b | CORS | ✅ PR #10 | `lib/security/cors.ts` (`corsPolicy()`, `isExactOrigin()`); `CORS_ORIGINS` in config |
+| 06 | Rate limiting | 🔍 `pr/06-rate-limiting` | `lib/rate-limit` (`rateLimit()`, express-rate-limit); `TRUST_PROXY`; global 300/15 min |
 
 ## Decisions (and why)
 
@@ -97,6 +98,27 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `X-Request-Id`. `Access-Control-Max-Age: 600`. A disallowed origin is not rejected with 403: it simply gets no
   `Access-Control-Allow-Origin`, and CSRF (step 11) protects writes. Mounted after `securityHeaders`, before `express.json`,
   so preflights are answered early and error responses carry CORS headers.
+- **Rate limiting (step 06):** `lib/rate-limit` is an Express adapter only (`express.ts`, no `core.ts`): express-rate-limit
+  is Express middleware, and Nest uses `@nestjs/throttler` (step 27). It depends on `lib/errors`: the 429 is
+  `AppError(429, 'RATE_LIMITED')` passed to `next()`, so it has the normal JSON shape and a `warn` log line.
+  The library sets `Retry-After` before calling the handler. Headers: IETF `standardHeaders: 'draft-8'` (`RateLimit`,
+  `RateLimit-Policy`), no legacy `X-RateLimit-*`. Key: `req.ip`, IPv6 grouped by /56 (library default). Memory store per
+  process (optional `store` option for Redis). Global limiter: 300 requests / 15 min per IP, after CORS (preflights
+  not counted) and before `express.json` (blocked requests are not parsed). `/api/health` is not excluded.
+  Demo: `GET /api/demo/rate-limit`, 5 per minute. Option `logger` (pino-style `(obj, msg)`): the library's setup warnings
+  go to the app's pino logger instead of `console`. pino methods must be called as methods (`logger.warn(...)`):
+  passed as a bare function they lose `this` and throw, which turned a request into a 500 during testing. CORS `exposedHeaders` now also has `Retry-After`, `RateLimit`, `RateLimit-Policy`.
+- **Auth limiter moved to step 09 (deviation from the plan row):** login/register do not exist yet, and the plan has no
+  unused code for future steps. Step 09 adds `rateLimit(...)` directly on `POST /login` and `/register`
+  (not on all of `/api/auth`: `/me`, `/csrf`, and `/refresh` must not share the strict limit).
+- **`TRUST_PROXY` (step 06, deviation: one variable instead of `TRUST_PROXY_HOPS`):** a hop count `0`–`10` or a
+  comma-separated list of IPs, CIDRs, or Express names (`loopback`, `linklocal`, `uniquelocal`). Default `0`, which is
+  passed to Express as `false` (its default), so express-rate-limit's one-time check can warn about `X-Forwarded-For`
+  without a trusted proxy. `true`, more than 10 hops, bad IPs/CIDRs, and an empty value fail at startup.
+  CIDR prefixes must be at least /8 (IPv4) and /32 (IPv6): `0.0.0.0/0` would trust every client, the same as `true`
+  (found in review). Wider private ranges go through the names (`uniquelocal` covers `fc00::/7`).
+- **New dependency versions:** `express-rate-limit` locked to 8.7.1 (a month old); 8.7.4 was published the day before.
+  Rule of thumb from now on: avoid npm versions published in the last ~2 weeks (supply-chain risk).
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -108,8 +130,12 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Known gaps (fixed in later steps)
 
-- **CORS header lists (05b):** step 06 must add `Retry-After` to `exposedHeaders`, and step 11 must add the CSRF header
-  (e.g. `X-CSRF-Token`) to `allowedHeaders` in `app.ts`, or the browser blocks them for the frontend.
+- **CORS header lists (05b):** step 11 must add the CSRF header (e.g. `X-CSRF-Token`) to `allowedHeaders` in `app.ts`,
+  or the browser blocks it for the frontend. (`Retry-After` and `RateLimit` were added to `exposedHeaders` in step 06.)
+- **Rate limit store (06):** in memory, per process. Several instances (or Docker replicas) would each count separately
+  and a restart resets the counters. A Redis store is out of scope; mention it in the README of step 30/31.
+- **Rate-limit setup checks (06):** express-rate-limit runs each check (e.g. `X-Forwarded-For` without trusted proxy)
+  only on the FIRST request a limiter sees, so they catch setup mistakes, not attacks. Accepted.
 - **Keep-alive during shutdown (found in 04b review):** after `server.close()`, a client with an already open keep-alive
   connection can keep sending requests and they are still served until the force-exit timeout (10 s). Applies to SIGTERM
   and to crashes. Fix idea: send `Connection: close` on every response once shutdown starts. Small side PR or with Docker (step 31).

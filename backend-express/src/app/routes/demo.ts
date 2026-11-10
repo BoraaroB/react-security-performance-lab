@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { rateLimit } from '../../lib/rate-limit/index.js';
 import { validate } from '../../lib/validation/index.js';
+import { logger } from '../logger.js';
 
 export const demoRouter = Router();
 
@@ -23,4 +25,9 @@ const listSchema = z.object({
 
 demoRouter.get('/validation', validate({ query: listSchema }), (req, res) => {
   res.json({ received: req.query });
+});
+
+// Demo of a strict per-route limit (login gets the same kind of limiter): the 6th request within a minute gets 429.
+demoRouter.get('/rate-limit', rateLimit({ windowMs: 60_000, limit: 5, logger }), (_req, res) => {
+  res.json({ message: 'Request allowed. See the RateLimit header for what is left.' });
 });
