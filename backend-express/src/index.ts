@@ -1,7 +1,21 @@
 import { createApp } from './app/app.js';
 import { config } from './app/config.js';
 import { logger } from './app/logger.js';
+import { createUsersRepository } from './app/repositories/users.repository.js';
+import { encryptor, passwords } from './app/security.js';
+import { seedDemoAccounts } from './app/seed.js';
+import { createStore } from './app/store.js';
 import { registerGracefulShutdown } from './lib/graceful-shutdown/index.js';
+
+const store = createStore();
+const users = createUsersRepository(store, encryptor);
+
+if (config.seedDemoAccounts) {
+  const created = await seedDemoAccounts(users, passwords);
+  // Loud in production on purpose: someone turned on accounts whose passwords everyone knows.
+  if (config.isProduction) logger.warn({ accounts: created }, 'Seeded demo accounts with PUBLIC passwords');
+  else logger.info({ accounts: created }, 'Seeded demo accounts');
+}
 
 const app = createApp();
 
