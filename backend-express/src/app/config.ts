@@ -1,6 +1,7 @@
 // Glue: the only place that reads process.env. Everything else receives values from `config`.
 import { isIP } from 'node:net';
 import { z } from 'zod';
+import { parseEncryptionKey } from '../lib/crypto/index.js';
 import { EnvValidationError, loadEnvFile, parseEnv } from '../lib/env/index.js';
 import { isExactOrigin } from '../lib/security/index.js';
 
@@ -52,6 +53,17 @@ const envSchema = z.object({
       ctx.addIssue({ code: 'custom', message: 'use a hop count (0-10) or a comma-separated list of proxy IPs/CIDRs' });
       return z.NEVER;
     }),
+  // Required, no default: a key written in the code (or a shared example key) would be no secret at all.
+  // Generate one with `node scripts/setup-env.mjs`. Losing it means losing every value encrypted with it.
+  DATA_ENCRYPTION_KEY: z.string({ error: 'required: run `node scripts/setup-env.mjs` to generate it' }).transform((value, ctx) => {
+    try {
+      return parseEncryptionKey(value);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'invalid key';
+      ctx.addIssue({ code: 'custom', message: `${reason}; run \`node scripts/setup-env.mjs\` to generate one` });
+      return z.NEVER;
+    }
+  }),
 }).superRefine((env, ctx) => {
   // A plain-HTTP page can be changed by anyone on the network (e.g. public Wi-Fi), and its injected script could
   // read credentialed API responses. So production allows only https origins (localhost is fine for local testing).
@@ -78,6 +90,7 @@ function loadConfig() {
       corsOrigins: env.CORS_ORIGINS ?? (env.NODE_ENV === 'production' ? [] : ['http://localhost:5173']),
       // 0 → false (Express's default), so the rate limiter can warn when X-Forwarded-For arrives without a trusted proxy.
       trustProxy: env.TRUST_PROXY === 0 ? false : env.TRUST_PROXY,
+      dataEncryptionKey: env.DATA_ENCRYPTION_KEY,
     } as const;
   } catch (error) {
     if (error instanceof EnvValidationError) {

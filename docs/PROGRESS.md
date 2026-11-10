@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 05b (CORS, PR #10)
-- **In review:** 06 (`pr/06-rate-limiting`): `lib/rate-limit`, `TRUST_PROXY`, global limiter, demo route
-- **Next step:** 07 (`pr/07-crypto-store`): AES-256-GCM, bcrypt, secure random, in-memory store + seed
+- **Last merged step:** 06 (rate limiting, PR #11)
+- **In review:** 07a (`pr/07a-crypto`): `lib/crypto` (AES-256-GCM), `DATA_ENCRYPTION_KEY`, `scripts/setup-env.mjs`, demo route
+- **Next step:** 07b (`pr/07b-password-hashing`): `lib/password` (bcrypt)
 
 ## How to resume after `/clear`
 
@@ -31,7 +31,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 04b | Process errors | ✅ PR #8 | `uncaughtException` / `unhandledRejection` → fatal log, graceful shutdown, exit 1 |
 | 05a | Security headers | ✅ PR #9 | `lib/security/headers.ts` (`securityHeaders()`, helmet); `express.json({ limit: '32kb' })` |
 | 05b | CORS | ✅ PR #10 | `lib/security/cors.ts` (`corsPolicy()`, `isExactOrigin()`); `CORS_ORIGINS` in config |
-| 06 | Rate limiting | 🔍 `pr/06-rate-limiting` | `lib/rate-limit` (`rateLimit()`, express-rate-limit); `TRUST_PROXY`; global 300/15 min |
+| 06 | Rate limiting | ✅ PR #11 | `lib/rate-limit` (`rateLimit()`, express-rate-limit); `TRUST_PROXY`; global 300/15 min |
+| 07a | Encryption | 🔍 `pr/07a-crypto` | `lib/crypto` (`createEncryptor`, `parseEncryptionKey`); `DATA_ENCRYPTION_KEY`; `scripts/setup-env.mjs` |
 
 ## Decisions (and why)
 
@@ -119,14 +120,37 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   (found in review). Wider private ranges go through the names (`uniquelocal` covers `fc00::/7`).
 - **New dependency versions:** `express-rate-limit` locked to 8.7.1 (a month old); 8.7.4 was published the day before.
   Rule of thumb from now on: avoid npm versions published in the last ~2 weeks (supply-chain risk).
+- **Step 07 split (user's choice):** 07a = `lib/crypto` + `setup-env.mjs`, 07b = `lib/password` (bcrypt),
+  07c = in-memory store + seed. The store is in memory (`Map`s in the process), not a real database, as planned.
+  Open question for 07c: which field is encrypted at rest (e.g. the user's `name`, or `email` with a blind index).
+- **Encryption (step 07a):** `lib/crypto` uses only `node:crypto`, no adapter (no framework code). AES-256-GCM, a random
+  12-byte IV per value, full 16-byte tag (`authTagLength` on decipher, so a shortened tag is rejected). Output
+  `v1.<iv>.<tag>.<ciphertext>` (base64url); `v1` leaves room for key rotation later. Optional `context` = GCM associated
+  data (e.g. the owner's user ID): a value copied to another row fails to decrypt. Every decrypt failure is one
+  `DecryptionError` (`DECRYPTION_FAILED`). `parseEncryptionKey` accepts only canonical base64 of exactly 32 bytes (Node's
+  decoder silently skips bad characters). Recommended context: table + column + row ID (`users.name:${id}`), so values
+  cannot be swapped between rows or between encrypted columns. The app's shared encryptor (glue) is created in 07c,
+  where it is first used; in 07a only the config validates the key.
+- **`DATA_ENCRYPTION_KEY` (step 07a):** required in every environment, no default (a key in the code is no secret).
+  A missing, empty, or bad key stops the server at startup with a hint to run `node scripts/setup-env.mjs`.
+- **`scripts/setup-env.mjs` (step 07a):** creates `.env` from `.env.example` if missing, fills only EMPTY secrets with
+  `crypto.randomBytes` (never `Math.random`), never changes an existing value (a new key would make old data unreadable),
+  never prints values. It sets mode 600 BEFORE writing a secret, writes a temp file and renames it over `.env`
+  (a crash cannot truncate `.env` and lose a key), and writes nothing when nothing changed. It also recognizes
+  `export NAME=` / `NAME = value` (otherwise it would append a second, different key) and treats `NAME=""` as empty.
+  Secrets are listed per project in the script.
+- **Crypto demo (step 07a):** `GET /api/demo/crypto` encrypts a FIXED text, never the caller's input (an "encrypt
+  anything" endpoint would let anyone use the server's key), with its OWN random key, never `DATA_ENCRYPTION_KEY`
+  (a public route must not hand out ciphertexts the real key accepts). Shows random IVs, tamper detection, wrong context.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
 ## Local state that is not in git
 
-- `backend-express/.env` exists locally (git-ignored), copied from `.env.example`.
-- Nothing else: `frontend/`, `backend-nest/`, the root `package.json`, and `scripts/setup-env.mjs` were deleted on purpose.
-  Each step creates its own files from scratch (frontend in step 14, Nest in step 26, `setup-env.mjs` in step 07, root scripts in step 30).
+- `backend-express/.env` exists locally (git-ignored). Since step 07a it needs `DATA_ENCRYPTION_KEY`:
+  run `node scripts/setup-env.mjs` once (it appends the key and keeps everything else).
+- Nothing else: `frontend/`, `backend-nest/`, and the root `package.json` were deleted on purpose.
+  Each step creates its own files from scratch (frontend in step 14, Nest in step 26, root scripts in step 30).
 
 ## Known gaps (fixed in later steps)
 
@@ -149,4 +173,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   Step 12 must keep that limit in its Zod schema, or raise the JSON limit; otherwise valid posts get 413 instead of `VALIDATION_ERROR`.
 - No `Cache-Control: no-store` on API responses yet (helmet does not set it). Responses with tokens or user data
   should not be cached by the browser or proxies → add it with the auth routes (steps 09–10).
+- **Key rotation (07a):** not supported. Changing `DATA_ENCRYPTION_KEY` makes all encrypted values unreadable (with an
+  in-memory store that only matters within one run). The `v1.` prefix leaves room for a key ID later.
+- **Encrypted values are not searchable (07a):** a random IV means `encrypt(x)` differs every time, so lookups by an
+  encrypted field need a blind index (HMAC). Decide in 07c whether `email` is encrypted.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
