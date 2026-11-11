@@ -3,6 +3,11 @@ import { AppError } from '../../lib/errors/index.js';
 import type { AccessTokenService } from '../../lib/jwt/index.js';
 import type { PasswordHasher } from '../../lib/password/index.js';
 import {
+  RefreshTokenError,
+  type IssuedRefreshToken,
+  type RefreshTokenService,
+} from '../../lib/refresh-tokens/index.js';
+import {
   EmailTakenError,
   toPublicUser,
   type PublicUser,
@@ -14,24 +19,41 @@ export interface AuthDeps {
   users: UsersRepository;
   passwords: PasswordHasher;
   accessTokens: Pick<AccessTokenService, 'sign'>;
+  refreshTokens: RefreshTokenService;
 }
 
 export interface AuthResult {
   accessToken: string;
+  /**
+   * Goes only into the httpOnly cookie, never into the JSON body (JavaScript, and so XSS, could read it there).
+   * So never `res.json()` an AuthResult as it is: the controller's `sendAuthResult` picks the safe fields.
+   */
+  refreshToken: IssuedRefreshToken;
   user: PublicUser;
 }
 
 /** Business logic of authentication. Knows nothing about HTTP requests; the controller does that. */
-export function createAuthService({ users, passwords, accessTokens }: AuthDeps) {
+export function createAuthService({ users, passwords, accessTokens, refreshTokens }: AuthDeps) {
   // A hash of a random password nobody knows, made with the same cost as real hashes. Login checks it when the
   // email does not exist, so that answer takes as long as a wrong password (see `login`). Started once, at startup.
   const unknownPassword = randomUUID();
   const dummyHash = passwords.hash(unknownPassword);
 
-  function issueTokens(user: User): AuthResult {
+  function toAuthResult(user: User, refreshToken: IssuedRefreshToken): AuthResult {
     const accessToken = accessTokens.sign({ sub: user.id });
-    return { accessToken, user: toPublicUser(user) };
+    const publicUser = toPublicUser(user);
+    return { accessToken, refreshToken, user: publicUser };
   }
+
+  // Login and register start a new session: a new refresh-token family.
+  async function startSession(user: User): Promise<AuthResult> {
+    const refreshToken = await refreshTokens.issue(user.id);
+    return toAuthResult(user, refreshToken);
+  }
+
+  // One answer for every refresh failure (no cookie, unknown, expired, reused, deleted user). Telling them apart
+  // would only help someone holding a stolen token; the client does the same thing in every case: log in again.
+  const sessionEnded = () => new AppError(401, 'UNAUTHORIZED', 'Session expired, please log in again');
 
   // Register logs the user in at once, so a free email gets 201 and a taken one cannot get the same answer: it WILL
   // reveal that the account exists. Hiding that needs an email-verification flow ("check your inbox" for both cases).
@@ -53,7 +75,7 @@ export function createAuthService({ users, passwords, accessTokens }: AuthDeps) 
         if (error instanceof EmailTakenError) throw emailTaken();
         throw error;
       }
-      return issueTokens(user);
+      return startSession(user);
     },
 
     async login(email: string, password: string): Promise<AuthResult> {
@@ -72,7 +94,25 @@ export function createAuthService({ users, passwords, accessTokens }: AuthDeps) 
         users.updatePasswordHash(user.id, newHash);
       }
 
-      return issueTokens(user);
+      return startSession(user);
+    },
+
+    /** Swaps a refresh token for a new access token AND a new refresh token (rotation). */
+    async refresh(token: string | undefined): Promise<AuthResult> {
+      if (!token) throw sessionEnded();
+      let refreshToken: IssuedRefreshToken;
+      try {
+        refreshToken = await refreshTokens.rotate(token);
+      } catch (error) {
+        if (error instanceof RefreshTokenError) throw sessionEnded();
+        throw error;
+      }
+
+      // The token is valid, but the account may be gone. Without this check, a deleted user's refresh token would
+      // keep making access tokens for up to 30 days. The new refresh token was never sent anywhere, so nobody holds it.
+      const user = users.findById(refreshToken.userId);
+      if (!user) throw sessionEnded();
+      return toAuthResult(user, refreshToken);
     },
   };
 }

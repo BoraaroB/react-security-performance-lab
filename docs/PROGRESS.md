@@ -5,11 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 09c (current user + `/me`, PR #19)
-- **In review:** 10a (`pr/10a-refresh-tokens`): `lib/refresh-tokens` (opaque tokens, SHA-256 at rest, rotation,
-  reuse detection), not wired into the app yet
-- **Next step:** 10b (`pr/10b-refresh-cookie`): the shared refresh-token service (glue), the refresh cookie on
-  login/register, `POST /api/auth/refresh`. Then 10c (`pr/10c-logout`).
+- **Last merged step:** 10a (`lib/refresh-tokens`, PR #20)
+- **In review:** 10b (`pr/10b-refresh-cookie`): refresh cookie on login/register, `POST /api/auth/refresh`
+- **Next step:** 10c (`pr/10c-logout`): `POST /api/auth/logout` (revoke the family, clear the cookie → 204).
 
 ## How to resume after `/clear`
 
@@ -42,7 +40,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 09a | Login | ✅ PR #17 | `auth.schemas.ts`, `auth.service.ts`, `auth.controller.ts`, `auth.routes.ts`; `createApp({ users })`; `accessTokens` glue |
 | 09b | Register | ✅ PR #18 | `registerSchema`, `register()` → 201, 409 `EMAIL_TAKEN`, register limiter 5/hour |
 | 09c | Current user + `/me` | ✅ PR #19 | `middleware/current-user.middleware.ts` (`loadCurrentUser`), `requireUser` chain in `app.ts`, `GET /api/auth/me` |
-| 10a | Refresh tokens (core) | 🔍 `pr/10a-refresh-tokens` | `lib/refresh-tokens` (`createRefreshTokenService` → `issue`, `rotate`; `createMemoryRefreshTokenStore`); no HTTP yet |
+| 10a | Refresh tokens (core) | ✅ PR #20 | `lib/refresh-tokens` (`createRefreshTokenService` → `issue`, `rotate`; `createMemoryRefreshTokenStore`); no HTTP yet |
+| 10b | Refresh cookie + `/refresh` | 🔍 `pr/10b-refresh-cookie` | `__Secure-refresh_token` cookie on login/register, `POST /api/auth/refresh`, `cookie-parser`, `createApp({ users, refreshTokens })` |
 
 ## Decisions (and why)
 
@@ -285,6 +284,30 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   kept until `familyExpiresAt`, not `expiresAt`. `absoluteTtlSeconds` is at most 1 year (catches config typos).
   The module ships `createMemoryRefreshTokenStore()` (a `Map` with `clear()`); whether 10b uses it or a repository over
   `store.ts` (so `store.reset()` clears tokens too) is decided in 10b. No `revoke` yet: logout adds it in 10c.
+- **Refresh cookie (step 10b):** `__Secure-refresh_token`, `HttpOnly; Secure; SameSite=Strict; Path=/api/auth`, `Expires` =
+  the token's `expiresAt` (sliding 7 days, capped at 30 days per login). `Secure` always, also in dev: Chrome, Firefox
+  and curl treat `http://localhost` as secure; Safari is unclear (older WebKit refused it), to check in step 21. `Path=/api/auth` (not
+  `/api/auth/refresh`) so logout (10c) gets it too; it must match where `app.ts` mounts the auth router. The
+  `__Secure-` prefix (found in review): browsers accept the cookie only over HTTPS with `Secure`, so a network attacker
+  cannot plant their own refresh token through a plain-HTTP response (which would log the victim into the attacker's
+  account; a CSRF token would not stop that). `__Host-` would be stronger but requires `Path=/`. The refresh token is never in a JSON body: `AuthResult` carries it, and the controller
+  picks `{ accessToken, user }` field by field for the body (`sendAuthResult`). `SameSite=Strict` works in dev because
+  `localhost:5173` and `localhost:4000` are the same site (ports do not count); in production the frontend and the API
+  must be on the same site too (e.g. `app.example.com` + `api.example.com`).
+- **`POST /api/auth/refresh` (step 10b):** reads the cookie, `rotate` → new access token + new refresh cookie →
+  `{ accessToken, user }`. Every failure (no cookie, malformed, unknown, expired, reused, deleted user) → the same
+  401 `UNAUTHORIZED` "Session expired, please log in again" (no oracle for someone holding a stolen token; found in the
+  10a review). After `rotate`, the user is loaded by `userId`; a missing user → 401 (the new refresh token was never
+  sent, so nobody holds it). No strict limiter (256-bit tokens cannot be guessed; the frontend refreshes often), global
+  limit only; `no-store` from the router. CSRF check: step 11.
+- **Cookie parsing (step 10b, new dependency):** `cookie-parser` 1.4.7 (+ `@types/cookie-parser` 1.4.10), the official
+  Express middleware; it uses the same `cookie` package Express already depends on. `app.use(cookieParser())` after
+  `express.json`, no secret (the refresh token is looked up, not signed). It turns values starting with `j:` into
+  objects, so the controller accepts only a string.
+- **Refresh-token wiring (step 10b):** `index.ts` creates `createMemoryRefreshTokenStore()` + `createRefreshTokenService`
+  (defaults) and passes it in: `createApp({ users, refreshTokens })` (stateful things come in from outside, like
+  `users`). The module's memory store is used, not a repository over `store.ts` (that would copy the same Map code), so
+  `store.reset()` does not clear refresh tokens; a test creates a fresh refresh-token store instead.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -327,10 +350,11 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   (users must refresh; harmless with 15 min tokens). Several services would need RS256/EdDSA with public keys.
 - **Access tokens cannot be revoked (08):** a stolen token works until it expires (≤ 15 min). Logout/reuse detection
   in step 10 revoke only the refresh token. A deny-list would make JWTs stateful; not planned.
-- **Login and register have no CSRF check yet (09a/09b → step 11):** the API contract and the security rules require one. The risk is
-  low today (`express.json` ignores form bodies, and a cross-site JSON POST needs a CORS preflight), but once step 10
+- **Login, register, and refresh have no CSRF check yet (09a/09b/10b → step 11):** the API contract and the security rules require one. The risk is
+  low today (`express.json` ignores form bodies, and a cross-site JSON POST needs a CORS preflight), but now that 10b
   sets the refresh cookie, login CSRF (logging the victim into the attacker's account) becomes real. Login CSRF needs a
-  pre-session token from `GET /auth/csrf`.
+  pre-session token from `GET /auth/csrf`. `/refresh` needs no body, so a cross-site form could POST to it; until
+  step 11 only `SameSite=Strict` stops the browser from attaching the cookie to such a request.
 - **Dummy hash vs older costs (09a):** the dummy hash uses the CURRENT bcrypt cost. After the cost is raised, accounts
   that still have an older (cheaper) hash answer a wrong password faster than an unknown email, so they can be told
   apart until their next login upgrades the hash. Not reachable today (in-memory store, every hash at cost 12).
@@ -350,12 +374,15 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   a sweep (an `.unref()` timer) or a database with a TTL index would fix it.
 - **Two tabs refreshing at once look like reuse (10a):** both send the same token, both get `REUSED`, and the
   family is revoked (logout). Step 21 must send one refresh at a time (single-flight). No grace period on purpose.
-- **For 10b (from the 10a security review):** (1) answer `REFRESH_TOKEN_REUSED` and `REFRESH_TOKEN_INVALID` with the
-  same 401 body (a thief should not learn that a token was real or that the theft was detected); log `REUSED` on the
-  server as a security event with `userId`, `familyId`, request ID, never the token or its hash. (2) After `rotate`,
-  load the user by `userId`; a missing user → revoke the family and 401 (like `loadCurrentUser`), or a deleted account's
-  refresh token keeps minting access tokens for up to 30 days. (3) Cookie `expires` from `issued.expiresAt`; only the
-  raw cookie value reaches `rotate`.
+- **Refresh-token reuse is not logged as a security event (10a review → postponed in 10b):** a reused token gives the
+  same `UNAUTHORIZED` warn line as an expired one. Operators should see reuse (possible theft) with `userId`,
+  `familyId`, and the request ID (never the token or its hash). Needs `userId`/`familyId` on `RefreshTokenError` and a
+  logger in the auth service. Good fit for the same small side PR as "No client IP on failed logins" (auth security events).
+- **Sibling subdomains can still set the refresh cookie (10b):** `__Secure-` stops plain-HTTP planting, but any HTTPS
+  subdomain of the same site (e.g. a hacked `blog.example.com`) could still set a `Domain=example.com` cookie with the
+  same name. Only `__Host-` (needs `Path=/`) or keeping untrusted subdomains off the site prevents that.
+- **A failed refresh does not clear the cookie (10b):** a dead `refresh_token` cookie stays in the browser until it
+  expires or the user logs in again (harmless: it is useless). Logout (10c) clears it.
 - **For 10c and later (from the 10a security review):** `revoke(token)` = hash → `find` → `deleteFamily`, and it must
   not throw for an unknown or used token (logout stays idempotent and reveals nothing). There is no "revoke every
   family of a user" (`deleteByUser`) yet; a password change or "log out everywhere" needs it.
