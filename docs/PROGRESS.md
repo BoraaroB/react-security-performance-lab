@@ -5,10 +5,11 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 09b (register, PR #18)
-- **In review:** 09c (`pr/09c-auth-me`): `loadCurrentUser(users)` → `req.user`, `GET /api/auth/me`
-- **Next step:** 10 (`pr/10-refresh-token-rotation`): refresh token in an httpOnly cookie, rotation, reuse detection,
-  logout (`lib/refresh-tokens`). Too big for one PR: propose a split (`10a`, `10b`, ...) to the user before coding.
+- **Last merged step:** 09c (current user + `/me`, PR #19)
+- **In review:** 10a (`pr/10a-refresh-tokens`): `lib/refresh-tokens` (opaque tokens, SHA-256 at rest, rotation,
+  reuse detection), not wired into the app yet
+- **Next step:** 10b (`pr/10b-refresh-cookie`): the shared refresh-token service (glue), the refresh cookie on
+  login/register, `POST /api/auth/refresh`. Then 10c (`pr/10c-logout`).
 
 ## How to resume after `/clear`
 
@@ -40,7 +41,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | – | Token = user ID only | ✅ PR #16 (`fix/jwt-sub-only`) | Removes `role` from the token (user's decision). Pushed after PR #15 was merged, so it needed its own PR |
 | 09a | Login | ✅ PR #17 | `auth.schemas.ts`, `auth.service.ts`, `auth.controller.ts`, `auth.routes.ts`; `createApp({ users })`; `accessTokens` glue |
 | 09b | Register | ✅ PR #18 | `registerSchema`, `register()` → 201, 409 `EMAIL_TAKEN`, register limiter 5/hour |
-| 09c | Current user + `/me` | 🔍 `pr/09c-auth-me` | `middleware/current-user.middleware.ts` (`loadCurrentUser`), `requireUser` chain in `app.ts`, `GET /api/auth/me` |
+| 09c | Current user + `/me` | ✅ PR #19 | `middleware/current-user.middleware.ts` (`loadCurrentUser`), `requireUser` chain in `app.ts`, `GET /api/auth/me` |
+| 10a | Refresh tokens (core) | 🔍 `pr/10a-refresh-tokens` | `lib/refresh-tokens` (`createRefreshTokenService` → `issue`, `rotate`; `createMemoryRefreshTokenStore`); no HTTP yet |
 
 ## Decisions (and why)
 
@@ -262,6 +264,27 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `requireUser = [authenticate(accessTokens), loadCurrentUser(users)]` once and passes it to routers
   (`createAuthRouter({ auth, requireUser })`); step 12 passes the same chain to the posts and admin routers.
   `GET /api/auth/me` → `{ user }`, global limiter only (the frontend calls it on every page load), `no-store` from the router.
+- **Step 10 split (user's choice):** 10a = `lib/refresh-tokens` core (no HTTP), 10b = refresh cookie on
+  login/register + `POST /auth/refresh`, 10c = `POST /auth/logout`. One concept per PR.
+- **Refresh tokens (step 10a):** `lib/refresh-tokens` uses only `node:crypto`, no adapter. Opaque, not a JWT (it must
+  be revocable, so the server looks it up anyway): 32 random bytes, base64url (always 43 characters; anything else is
+  rejected before the store). Stored only as SHA-256 hex (`tokenHash`); a fast hash is fine for 256 random bits.
+  Record: `tokenHash`, `userId`, `familyId` (one per login, `randomUUID`), `expiresAt`, `familyExpiresAt`, `usedAt`.
+  `issue(userId)` starts a family; `rotate(token)` uses the token up and returns a new one in the same family.
+  Errors: `RefreshTokenError` `REFRESH_TOKEN_INVALID` (unknown, expired, malformed) or `REFRESH_TOKEN_REUSED` (already
+  used → `deleteFamily`, so the thief's newer token dies too; a later replay of the same token is then just `INVALID`).
+  Expiry: sliding `ttlSeconds` (default 7 days) per token, capped by `absoluteTtlSeconds` (default 30 days) per family,
+  so daily refreshing cannot keep a session alive forever. `RefreshTokenStore` is async (`save`, `find`, `markUsed`,
+  `deleteFamily`), so a database or Redis can implement it. `markUsed` is an atomic compare-and-set (used only if
+  `usedAt` is still `null`). After saving the new token, `rotate` checks that the used token is still stored:
+  `deleteFamily` removes used records too, so if it is gone, a parallel request revoked the family while the new token
+  was being saved (possible with a real database), and `rotate` revokes again and throws `REUSED` (found in review).
+  Result: two parallel rotations of one token → BOTH get `REUSED` and the family is revoked (checked with a temporary
+  script, also with a slow store; no test file yet). The "already used?" check runs BEFORE the expiry check (found in
+  review): a user who comes back after their old token expired still triggers reuse detection. So used records must be
+  kept until `familyExpiresAt`, not `expiresAt`. `absoluteTtlSeconds` is at most 1 year (catches config typos).
+  The module ships `createMemoryRefreshTokenStore()` (a `Map` with `clear()`); whether 10b uses it or a repository over
+  `store.ts` (so `store.reset()` clears tokens too) is decided in 10b. No `revoke` yet: logout adds it in 10c.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -322,4 +345,18 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   never sign up). **Rule for step 13 (OAuth):** never auto-link a GitHub identity to an existing local account by
   matching email, or an attacker who pre-registered that email keeps a password into the victim's account
   (pre-account hijacking).
+- **Refresh-token records are never pruned (10a):** the memory store keeps used and expired records until restart
+  (used ones are needed for reuse detection until they expire), and `deleteFamily` scans every record. Fine for a demo;
+  a sweep (an `.unref()` timer) or a database with a TTL index would fix it.
+- **Two tabs refreshing at once look like reuse (10a):** both send the same token, both get `REUSED`, and the
+  family is revoked (logout). Step 21 must send one refresh at a time (single-flight). No grace period on purpose.
+- **For 10b (from the 10a security review):** (1) answer `REFRESH_TOKEN_REUSED` and `REFRESH_TOKEN_INVALID` with the
+  same 401 body (a thief should not learn that a token was real or that the theft was detected); log `REUSED` on the
+  server as a security event with `userId`, `familyId`, request ID, never the token or its hash. (2) After `rotate`,
+  load the user by `userId`; a missing user → revoke the family and 401 (like `loadCurrentUser`), or a deleted account's
+  refresh token keeps minting access tokens for up to 30 days. (3) Cookie `expires` from `issued.expiresAt`; only the
+  raw cookie value reaches `rotate`.
+- **For 10c and later (from the 10a security review):** `revoke(token)` = hash → `find` → `deleteFamily`, and it must
+  not throw for an unknown or used token (logout stays idempotent and reveals nothing). There is no "revoke every
+  family of a user" (`deleteByUser`) yet; a password change or "log out everywhere" needs it.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
