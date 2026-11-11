@@ -5,9 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 07c (in-memory store, users repository, demo accounts, PR #14)
-- **In review:** 08 (`pr/08-jwt-access-token`): `lib/jwt` (access tokens: HS256 pinned, iss/aud, 15 min), `authenticate` middleware, `JWT_SECRET`
-- **Next step:** 09 (`pr/09-register-login`): register, login, `GET /auth/me`, user-enumeration protection, strict login limiter
+- **Last merged step:** 08 (JWT access tokens, PR #15)
+- **In review:** `fix/jwt-sub-only`: the access token carries only `sub`, no `role` (this commit missed PR #15, see below)
+- **Next step:** 09 (`pr/09-register-login`): register, login, `GET /auth/me`, user-enumeration protection, strict login limiter, load the current user by the token's `sub`.
+  Probably too big for one PR: propose a 09a/09b split (e.g. register/login vs. `loadCurrentUser` + `/auth/me`)
 
 ## How to resume after `/clear`
 
@@ -35,7 +36,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 07a | Encryption | ✅ PR #12 | `lib/crypto` (`createEncryptor`, `parseEncryptionKey`); `DATA_ENCRYPTION_KEY`; `scripts/setup-env.mjs` |
 | 07b | Password hashing | ✅ PR #13 | `lib/password` (`createPasswordHasher` → `hash`, `verify`, `needsRehash`); `bcryptjs` |
 | 07c | Store + seed | ✅ PR #14 | `store.ts`, `repositories/users.repository.ts`, `security.ts`, `seed.ts`; `SEED_DEMO_ACCOUNTS`; posts deferred to step 12 |
-| 08 | JWT access token | 🔍 `pr/08-jwt-access-token` | `lib/jwt` (`createAccessTokenService` → `sign`, `verify`; `authenticate`); `JWT_SECRET`; demo `/api/demo/jwt` |
+| 08 | JWT access token | ✅ PR #15 | `lib/jwt` (`createAccessTokenService` → `sign`, `verify`; `authenticate`); `JWT_SECRET`; demo `/api/demo/jwt`. Merged with `role` in the token |
+| – | Token = user ID only | 🔍 `fix/jwt-sub-only` | Removes `role` from the token (user's decision). Pushed after PR #15 was merged, so it needs its own PR |
 
 ## Decisions (and why)
 
@@ -192,13 +194,18 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **JWT access tokens (step 08):** `lib/jwt` = `core.ts` (`createAccessTokenService`) + `express.ts` (`authenticate`),
   `jsonwebtoken` 9. HS256 only, fixed in the code (not an option): signed and verified with `algorithms: ['HS256']`, so
   `alg: none` and algorithm confusion are rejected. `verify` checks `iss` and `aud` and also requires `exp` (jsonwebtoken
-  does not). Claims: `sub` (user ID) and `role`, nothing else (the payload is readable by anyone). TTL default 900 s,
+  does not). Claims: only `sub` (user ID); the payload is readable by anyone. TTL default 900 s,
   allowed 1–3600. Secret ≥ 32 bytes. `InvalidTokenError` has `TOKEN_EXPIRED` or `TOKEN_INVALID`; the library's reason is
   never sent. `authenticate` reads only `Authorization: Bearer` (never a cookie), sets `req.auth` (global `Express.Request`
   augmentation), and answers 401 `TOKEN_EXPIRED` (frontend refreshes) or `UNAUTHORIZED` with `WWW-Authenticate: Bearer`.
   `lib/jwt/express.ts` depends on `lib/errors`.
-- **Role in the token (step 08):** `role` is a snapshot from login/refresh, so a role change applies only after the next
-  refresh (≤ 15 min). Accepted for this project; step 12 can re-read the user for admin routes if needed.
+- **No role in the token (user's decision, step 08):** the token carries only `sub`. A role in the token would be a
+  snapshot from login, so a demoted admin or a deleted user would keep access for up to 15 minutes. Instead the app
+  loads the current user by `sub` on every protected request (one primary-key lookup; in a monolith that is cheap and
+  the usual choice). Step 09 adds that as app glue (e.g. `loadCurrentUser(users)` → `req.user`, a missing user → 401
+  `UNAUTHORIZED`), not in `lib/jwt`, so the module stays free of the store. Step 12 (`authorize`) reads the role from
+  `req.user`, never from the token. Industry note: microservices behind an identity provider usually put roles/scopes
+  in a short-lived token (RFC 9068), because they cannot reach the user database.
 - **`JWT_SECRET` (step 08):** required, no default, ≥ 32 characters; `setup-env.mjs` generates 32 random bytes (base64url).
   Its own value, never `DATA_ENCRYPTION_KEY` (one key per purpose). Issuer `react-security-lab-api` and audience
   `react-security-lab-web` are fixed in the glue. Following 07a/07b, the shared `accessTokens` instance (glue in

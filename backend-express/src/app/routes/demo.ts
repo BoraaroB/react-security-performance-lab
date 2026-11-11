@@ -116,7 +116,7 @@ demoRouter.get('/jwt', (_req, res) => {
   const toPart = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
   const fromPart = (part = '') => JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as Record<string, unknown>;
 
-  const token = demoTokens.sign({ sub: 'demo-user-id', role: 'user' });
+  const token = demoTokens.sign({ sub: 'demo-user-id' });
   const [header, payload, signature] = token.split('.');
   res.json({
     token,
@@ -125,13 +125,13 @@ demoRouter.get('/jwt', (_req, res) => {
     payload: fromPart(payload),
     verify: {
       valid: tryVerify(token),
-      // The payload changed to role "admin", the old signature kept: the signature no longer matches.
-      roleChangedToAdmin: tryVerify(`${header}.${toPart({ ...fromPart(payload), role: 'admin' })}.${signature}`),
+      // `sub` changed to another user's ID (to act as that user), the old signature kept: it no longer matches.
+      subChangedToOtherUser: tryVerify(`${header}.${toPart({ ...fromPart(payload), sub: 'admin-user-id' })}.${signature}`),
       // Header changed to "alg: none" (a classic attack). Rejected because only HS256 is accepted. (The old signature
       // is kept: with an empty one, the library would reject it as "signature required" before checking `alg`.)
       algNone: tryVerify(`${toPart({ alg: 'none', typ: 'JWT' })}.${payload}.${signature}`),
       // Same secret, but made for another audience.
-      otherAudience: tryVerify(otherServiceTokens.sign({ sub: 'demo-user-id', role: 'user' })),
+      otherAudience: tryVerify(otherServiceTokens.sign({ sub: 'demo-user-id' })),
     },
   });
 });
