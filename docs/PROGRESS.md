@@ -5,10 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 08 (JWT access tokens, PR #15) + `fix/jwt-sub-only` (PR #16)
-- **In review:** 09a (`pr/09a-login`): `POST /api/auth/login`
-- **Next step:** 09b (`pr/09b-register`): `POST /api/auth/register` (Zod schema with password rules and the 72-byte
-  limit, `EmailTakenError` → same answer as the `findByEmail` check, own strict limiter). Then 09c (`loadCurrentUser` + `GET /auth/me`).
+- **Last merged step:** 09a (login, PR #17)
+- **In review:** 09b (`pr/09b-register`): `POST /api/auth/register`
+- **Next step:** 09c (`pr/09c-auth-me`): `loadCurrentUser(users)` app glue (user by the token's `sub` → `req.user`,
+  missing user → 401 `UNAUTHORIZED`) + `GET /api/auth/me` → `{ user }` (public shape).
 
 ## How to resume after `/clear`
 
@@ -38,7 +38,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 07c | Store + seed | ✅ PR #14 | `store.ts`, `repositories/users.repository.ts`, `security.ts`, `seed.ts`; `SEED_DEMO_ACCOUNTS`; posts deferred to step 12 |
 | 08 | JWT access token | ✅ PR #15 | `lib/jwt` (`createAccessTokenService` → `sign`, `verify`; `authenticate`); `JWT_SECRET`; demo `/api/demo/jwt`. Merged with `role` in the token |
 | – | Token = user ID only | ✅ PR #16 (`fix/jwt-sub-only`) | Removes `role` from the token (user's decision). Pushed after PR #15 was merged, so it needed its own PR |
-| 09a | Login | 🔍 `pr/09a-login` | `auth.schemas.ts`, `auth.service.ts`, `auth.controller.ts`, `auth.routes.ts`; `createApp({ users })`; `accessTokens` glue |
+| 09a | Login | ✅ PR #17 | `auth.schemas.ts`, `auth.service.ts`, `auth.controller.ts`, `auth.routes.ts`; `createApp({ users })`; `accessTokens` glue |
+| 09b | Register | 🔍 `pr/09b-register` | `registerSchema`, `register()` → 201, 409 `EMAIL_TAKEN`, register limiter 5/hour |
 
 ## Decisions (and why)
 
@@ -233,6 +234,23 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   needed them for seeding) and passes them in. The auth service is built inside `createApp` from the shared
   `passwords` and `accessTokens` (`security.ts`).
 - **`passwordHash` redacted (step 09a):** added in `src/app/logger.ts` via `redactKeys` (glue, not a `lib/logger` change).
+- **Register (step 09b):** 201 `{ accessToken, user }` (logged in at once; the refresh cookie comes in step 10).
+  A taken email → 409 `EMAIL_TAKEN` "An account with this email already exists" (new error code). This reveals that the
+  account exists; that cannot be hidden while sign-up logs in at once (a free email gets 201). Hiding it would need an
+  email-verification flow (same "check your inbox" answer for both cases), which is out of scope. The strict limiter is
+  the mitigation. Order: `findByEmail` fast path (no bcrypt, ~1 ms) → hash → `create`; `create`'s `EmailTakenError`
+  (two parallel sign-ups) → the same 409. The role is always `'user'`, set in the service; `registerSchema` has no
+  `role` field, so a sent `role` is stripped.
+- **Password rules (step 09b):** NIST SP 800-63B-4 (2025): at least 15 characters (the password is the only factor;
+  8 would be allowed only with MFA), counted as Unicode code points (`[...value].length`, not `.length`), no composition
+  rules, at most 72 UTF-8 bytes (`Buffer.byteLength`), so `PasswordTooLongError` cannot happen after validation.
+  The seeded demo passwords (`Admin123!`, `User1234!`) are shorter; they bypass the schema and are only for local demos.
+  Name: trimmed, NFC-normalized, 1–100, no control or format characters (`\p{Cc}`, `\p{Cf}`: zero-width space,
+  right-to-left override), against spoofing; emoji with a zero-width joiner are rejected too (accepted).
+  `email` is one shared Zod field for login and register.
+- **Register limiter (step 09b):** 5 requests per hour per IP, its own counter (a fresh user must still be able to log
+  in). Invalid requests count too. Per IP, so people behind one shared IP (office, school, mobile carrier) share the 5:
+  accepted trade-off. Not `skipFailedRequests`: it would also skip the 409s and allow mass email probing.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -275,7 +293,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   (users must refresh; harmless with 15 min tokens). Several services would need RS256/EdDSA with public keys.
 - **Access tokens cannot be revoked (08):** a stolen token works until it expires (≤ 15 min). Logout/reuse detection
   in step 10 revoke only the refresh token. A deny-list would make JWTs stateful; not planned.
-- **Login has no CSRF check yet (09a → step 11):** the API contract and the security rules require one. The risk is
+- **Login and register have no CSRF check yet (09a/09b → step 11):** the API contract and the security rules require one. The risk is
   low today (`express.json` ignores form bodies, and a cross-site JSON POST needs a CORS preflight), but once step 10
   sets the refresh cookie, login CSRF (logging the victim into the attacker's account) becomes real. Login CSRF needs a
   pre-session token from `GET /auth/csrf`.
@@ -285,4 +303,12 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **No client IP on failed logins (09a, low):** failed logins and login 429s are logged without `req.ip`, so operators
   cannot see which IPs are attacking. Fix idea: `ip: req.ip` in the request log, or one auth-failure line with the IP
   (never the password). Small side PR later.
- on install; `tsx` works without approving any scripts.
+- **No breached/common-password check (09b):** NIST requires rejecting passwords from breach and common-password
+  lists (a bundled top-10k list, or the HIBP k-anonymity API), and a password equal to the email is not rejected either.
+  Not planned yet (a separate concept); a good interview topic.
+- **Register reveals taken emails (09b):** 409 `EMAIL_TAKEN` (see Decisions). Only email verification would hide it.
+- **No email verification (09b):** anyone can register with someone else's email address (squatting: the owner can
+  never sign up). **Rule for step 13 (OAuth):** never auto-link a GitHub identity to an existing local account by
+  matching email, or an attacker who pre-registered that email keeps a password into the victim's account
+  (pre-account hijacking).
+- npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
