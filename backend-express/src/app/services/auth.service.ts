@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { AppError } from '../../lib/errors/index.js';
 import type { AccessTokenService } from '../../lib/jwt/index.js';
 import type { PasswordHasher } from '../../lib/password/index.js';
-import { toPublicUser, type PublicUser, type UsersRepository } from '../repositories/users.repository.js';
+import {
+  EmailTakenError,
+  toPublicUser,
+  type PublicUser,
+  type User,
+  type UsersRepository,
+} from '../repositories/users.repository.js';
 
 export interface AuthDeps {
   users: UsersRepository;
@@ -21,7 +27,31 @@ export function createAuthService({ users, passwords, accessTokens }: AuthDeps) 
   // email does not exist, so that answer takes as long as a wrong password (see `login`). Started once, at startup.
   const dummyHash = passwords.hash(randomUUID());
 
+  function issueTokens(user: User): AuthResult {
+    return { accessToken: accessTokens.sign({ sub: user.id }), user: toPublicUser(user) };
+  }
+
+  // Register logs the user in at once, so a free email gets 201 and a taken one cannot get the same answer: it WILL
+  // reveal that the account exists. Hiding that needs an email-verification flow ("check your inbox" for both cases).
+  // Here the honest 409 is used, and the strict register limiter keeps mass checking slow.
+  const emailTaken = () => new AppError(409, 'EMAIL_TAKEN', 'An account with this email already exists');
+
   return {
+    async register(input: { name: string; email: string; password: string }): Promise<AuthResult> {
+      // Fast path: no ~200 ms of bcrypt for an email that is clearly taken.
+      if (users.findByEmail(input.email)) throw emailTaken();
+      const passwordHash = await passwords.hash(input.password);
+      try {
+        // The role is set here, never taken from the request.
+        return issueTokens(users.create({ name: input.name, email: input.email, passwordHash, role: 'user' }));
+      } catch (error) {
+        // Two registrations with the same email can both pass the check above while they await the hash; `create`
+        // is the real guard. Same answer as the fast path, not a 500.
+        if (error instanceof EmailTakenError) throw emailTaken();
+        throw error;
+      }
+    },
+
     async login(email: string, password: string): Promise<AuthResult> {
       const user = users.findByEmail(email);
       // Always run bcrypt (~200 ms), even for an unknown email. Skipping it would answer unknown emails in ~1 ms,
@@ -36,7 +66,7 @@ export function createAuthService({ users, passwords, accessTokens }: AuthDeps) 
         users.updatePasswordHash(user.id, await passwords.hash(password));
       }
 
-      return { accessToken: accessTokens.sign({ sub: user.id }), user: toPublicUser(user) };
+      return issueTokens(user);
     },
   };
 }

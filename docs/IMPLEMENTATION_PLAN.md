@@ -32,8 +32,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 07b | `pr/07b-password-hashing` | bcrypt hash/verify, cost factor, 72-byte limit, `needsRehash`, demo route | `lib/password` | S2 | ✅ |
 | 07c | `pr/07c-store-seed` | In-memory store (`Map`s, `createStore()` with `reset()`) + users repository (`src/app/repositories/`, routes → controllers → services → repositories from here on; `name` encrypted at rest) + seeded demo accounts (`SEED_DEMO_ACCOUNTS`, off in production), uses `lib/password` and `lib/crypto`. Posts: step 12 | – | S2, S3 | ✅ |
 | 08 | `pr/08-jwt-access-token` | Sign/verify JWT (pinned algorithm, iss/aud), `authenticate` middleware | `lib/jwt` | S2 | ✅ |
-| 09a | `pr/09a-login` | `POST /auth/login`: same 401 and same timing for unknown email and wrong password (dummy hash), strict login limiter, `Cache-Control: no-store`, public user shape, rehash on login | – | S2 | 🔍 |
-| 09b | `pr/09b-register` | `POST /auth/register`: password rules, `EmailTakenError` handling, own strict limiter | – | S2 | ⬜ |
+| 09a | `pr/09a-login` | `POST /auth/login`: same 401 and same timing for unknown email and wrong password (dummy hash), strict login limiter, `Cache-Control: no-store`, public user shape, rehash on login | – | S2 | ✅ |
+| 09b | `pr/09b-register` | `POST /auth/register`: password rules, `EmailTakenError` handling, own strict limiter | – | S2 | 🔍 |
 | 09c | `pr/09c-auth-me` | `loadCurrentUser` (user by the token's `sub` → `req.user`, missing user → 401), `GET /auth/me` | – | S2 | ⬜ |
 | 10 | `pr/10-refresh-token-rotation` | Refresh token in an httpOnly cookie, rotation, reuse detection, logout | `lib/refresh-tokens` | S2 | ⬜ |
 | 11 | `pr/11-csrf` | Signed double-submit CSRF + `Origin` check, `GET /auth/csrf` | `lib/csrf` | S1 | ⬜ |
@@ -132,6 +132,6 @@ Rules:
 | GET | `/api/demo/rate-limit` | 5 requests per minute | rate-limit demo |
 
 Errors: `{ "error": { "code", "message", "details"?, "requestId" } }`. Key codes: `VALIDATION_ERROR`, `UNAUTHORIZED`,
-`TOKEN_EXPIRED`, `INVALID_CREDENTIALS`, `FORBIDDEN`, `CSRF_INVALID`, `RATE_LIMITED`, `NOT_FOUND`, `INTERNAL_ERROR`.
+`TOKEN_EXPIRED`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `FORBIDDEN`, `CSRF_INVALID`, `RATE_LIMITED`, `NOT_FOUND`, `INTERNAL_ERROR`.
 
 Seeded demo accounts: `admin@example.com` / `Admin123!` (admin) and `user@example.com` / `User1234!` (user).
