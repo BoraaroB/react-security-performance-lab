@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 07b (password hashing, PR #13)
-- **In review:** 07c (`pr/07c-store-seed`): in-memory store, users repository (`name` encrypted at rest), demo accounts
-- **Next step:** 08 (`pr/08-jwt-access-token`): `lib/jwt` (sign/verify, pinned algorithm, iss/aud), `authenticate` middleware
+- **Last merged step:** 07c (in-memory store, users repository, demo accounts, PR #14)
+- **In review:** 08 (`pr/08-jwt-access-token`): `lib/jwt` (access tokens: HS256 pinned, iss/aud, 15 min), `authenticate` middleware, `JWT_SECRET`
+- **Next step:** 09 (`pr/09-register-login`): register, login, `GET /auth/me`, user-enumeration protection, strict login limiter
 
 ## How to resume after `/clear`
 
@@ -34,7 +34,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 06 | Rate limiting | ✅ PR #11 | `lib/rate-limit` (`rateLimit()`, express-rate-limit); `TRUST_PROXY`; global 300/15 min |
 | 07a | Encryption | ✅ PR #12 | `lib/crypto` (`createEncryptor`, `parseEncryptionKey`); `DATA_ENCRYPTION_KEY`; `scripts/setup-env.mjs` |
 | 07b | Password hashing | ✅ PR #13 | `lib/password` (`createPasswordHasher` → `hash`, `verify`, `needsRehash`); `bcryptjs` |
-| 07c | Store + seed | 🔍 `pr/07c-store-seed` | `store.ts`, `repositories/users.repository.ts`, `security.ts`, `seed.ts`; `SEED_DEMO_ACCOUNTS`; posts deferred to step 12 |
+| 07c | Store + seed | ✅ PR #14 | `store.ts`, `repositories/users.repository.ts`, `security.ts`, `seed.ts`; `SEED_DEMO_ACCOUNTS`; posts deferred to step 12 |
+| 08 | JWT access token | 🔍 `pr/08-jwt-access-token` | `lib/jwt` (`createAccessTokenService` → `sign`, `verify`; `authenticate`); `JWT_SECRET`; demo `/api/demo/jwt` |
 
 ## Decisions (and why)
 
@@ -188,13 +189,29 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Posts deferred to step 12 (deviation from the 07c plan row):** no code for future steps; the posts Map and
   repository come with posts CRUD. Wiring the repository into `createApp()` (dependency injection) comes in step 09,
   the first route that uses it.
+- **JWT access tokens (step 08):** `lib/jwt` = `core.ts` (`createAccessTokenService`) + `express.ts` (`authenticate`),
+  `jsonwebtoken` 9. HS256 only, fixed in the code (not an option): signed and verified with `algorithms: ['HS256']`, so
+  `alg: none` and algorithm confusion are rejected. `verify` checks `iss` and `aud` and also requires `exp` (jsonwebtoken
+  does not). Claims: `sub` (user ID) and `role`, nothing else (the payload is readable by anyone). TTL default 900 s,
+  allowed 1–3600. Secret ≥ 32 bytes. `InvalidTokenError` has `TOKEN_EXPIRED` or `TOKEN_INVALID`; the library's reason is
+  never sent. `authenticate` reads only `Authorization: Bearer` (never a cookie), sets `req.auth` (global `Express.Request`
+  augmentation), and answers 401 `TOKEN_EXPIRED` (frontend refreshes) or `UNAUTHORIZED` with `WWW-Authenticate: Bearer`.
+  `lib/jwt/express.ts` depends on `lib/errors`.
+- **Role in the token (step 08):** `role` is a snapshot from login/refresh, so a role change applies only after the next
+  refresh (≤ 15 min). Accepted for this project; step 12 can re-read the user for admin routes if needed.
+- **`JWT_SECRET` (step 08):** required, no default, ≥ 32 characters; `setup-env.mjs` generates 32 random bytes (base64url).
+  Its own value, never `DATA_ENCRYPTION_KEY` (one key per purpose). Issuer `react-security-lab-api` and audience
+  `react-security-lab-web` are fixed in the glue. Following 07a/07b, the shared `accessTokens` instance (glue in
+  `security.ts`) is created in step 09, where it is first used; in step 08 only the config validates the secret.
+- **JWT demo (step 08):** `GET /api/demo/jwt` and `/api/demo/jwt/protected` use their own random secret and a 60 s TTL,
+  never `JWT_SECRET` (a public route must not hand out tokens the real API accepts).
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
 ## Local state that is not in git
 
-- `backend-express/.env` exists locally (git-ignored). Since step 07a it needs `DATA_ENCRYPTION_KEY`:
-  run `node scripts/setup-env.mjs` once (it appends the key and keeps everything else).
+- `backend-express/.env` exists locally (git-ignored). It needs `DATA_ENCRYPTION_KEY` (07a) and `JWT_SECRET` (08):
+  run `node scripts/setup-env.mjs` (it fills empty secrets and keeps everything else).
 - Nothing else: `frontend/`, `backend-nest/`, and the root `package.json` were deleted on purpose.
   Each step creates its own files from scratch (frontend in step 14, Nest in step 26, root scripts in step 30).
 
@@ -230,4 +247,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   exist, or the faster response reveals which accounts exist. Not in `lib/password` yet; step 09 adds it.
 - **bcrypt CPU on the main thread (07b):** `bcryptjs` async hashing yields between chunks, but it still uses the main
   thread's CPU. Many parallel logins slow every request; the strict login limiter (step 09) is the mitigation.
+- **JWT key rotation (08):** one secret, no `kid`. Changing `JWT_SECRET` invalidates every access token at once
+  (users must refresh; harmless with 15 min tokens). Several services would need RS256/EdDSA with public keys.
+- **Access tokens cannot be revoked (08):** a stolen token works until it expires (≤ 15 min). Logout/reuse detection
+  in step 10 revoke only the refresh token. A deny-list would make JWTs stateful; not planned.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.

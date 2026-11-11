@@ -66,6 +66,11 @@ const envSchema = z.object({
       return z.NEVER;
     }
   }),
+  // Required, no default: whoever knows it can sign a token for any user, including admins. Its own value, never
+  // DATA_ENCRYPTION_KEY: one key per purpose, so a leak of one does not break the other.
+  JWT_SECRET: z
+    .string({ error: 'required: run `node scripts/setup-env.mjs` to generate it' })
+    .min(32, 'must be at least 32 characters; run `node scripts/setup-env.mjs` to generate one'),
 }).superRefine((env, ctx) => {
   // A plain-HTTP page can be changed by anyone on the network (e.g. public Wi-Fi), and its injected script could
   // read credentialed API responses. So production allows only https origins (localhost is fine for local testing).
@@ -95,6 +100,7 @@ function loadConfig() {
       // 0 → false (Express's default), so the rate limiter can warn when X-Forwarded-For arrives without a trusted proxy.
       trustProxy: env.TRUST_PROXY === 0 ? false : env.TRUST_PROXY,
       dataEncryptionKey: env.DATA_ENCRYPTION_KEY,
+      jwtSecret: env.JWT_SECRET,
     } as const;
   } catch (error) {
     if (error instanceof EnvValidationError) {
