@@ -17,7 +17,7 @@ if (config.seedDemoAccounts) {
   else logger.info({ accounts: created }, 'Seeded demo accounts');
 }
 
-const app = createApp();
+const app = createApp({ users });
 
 // Express 5 passes listen errors (e.g. EADDRINUSE: port already taken) to this callback instead of throwing them.
 const server = app.listen(config.port, (error) => {
