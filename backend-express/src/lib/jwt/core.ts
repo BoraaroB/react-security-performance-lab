@@ -33,10 +33,12 @@ export interface AccessTokenOptions {
   ttlSeconds?: number;
 }
 
-/** What a valid token says: the user's ID and role. */
+/**
+ * What a valid token says: only the user's ID. No role or other data: a token cannot be changed or revoked after it
+ * is issued, so anything else in it could be out of date. The app loads the current user (and role) by this ID.
+ */
 export interface AccessTokenClaims {
   sub: string;
-  role: string;
 }
 
 export interface AccessTokenService {
@@ -59,10 +61,10 @@ export function createAccessTokenService(options: AccessTokenOptions): AccessTok
   }
 
   return {
-    sign({ sub, role }) {
+    sign({ sub }) {
       // `verify` rejects an empty `sub`, so such a token would fail on every request: fail here, where the bug is.
       if (!sub) throw new Error('sub must be a non-empty string');
-      return jwt.sign({ role }, secret, { algorithm: ALGORITHM, expiresIn: ttlSeconds, issuer, audience, subject: sub });
+      return jwt.sign({}, secret, { algorithm: ALGORITHM, expiresIn: ttlSeconds, issuer, audience, subject: sub });
     },
     verify(token) {
       let payload: string | jwt.JwtPayload;
@@ -77,9 +79,9 @@ export function createAccessTokenService(options: AccessTokenOptions): AccessTok
       // jsonwebtoken does not require `exp`: a token without it would never expire. `sign` always sets it, so a
       // missing one means the token was not made by `sign`.
       if (typeof payload === 'string' || typeof payload.exp !== 'number') throw new InvalidTokenError('TOKEN_INVALID');
-      const { sub, role } = payload;
-      if (typeof sub !== 'string' || !sub || typeof role !== 'string') throw new InvalidTokenError('TOKEN_INVALID');
-      return { sub, role };
+      const { sub } = payload;
+      if (typeof sub !== 'string' || !sub) throw new InvalidTokenError('TOKEN_INVALID');
+      return { sub };
     },
   };
 }
