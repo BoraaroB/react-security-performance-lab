@@ -30,8 +30,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 06 | `pr/06-rate-limiting` | `trust proxy` from config (`TRUST_PROXY`: a hop count, default `0`, or an IP/CIDR list), never `true` or a catch-all range (any client could fake `req.ip` with `X-Forwarded-For` and bypass the limiter), global limiter (strict auth limiter: step 09), `429 RATE_LIMITED` + `Retry-After`, demo route | `lib/rate-limit` | S3 | ✅ |
 | 07a | `pr/07a-crypto` | AES-256-GCM (data at rest) with associated data, `DATA_ENCRYPTION_KEY` in config, `scripts/setup-env.mjs` (secure random secrets), demo route | `lib/crypto` | S3 | ✅ |
 | 07b | `pr/07b-password-hashing` | bcrypt hash/verify, cost factor, 72-byte limit, `needsRehash`, demo route | `lib/password` | S2 | ✅ |
-| 07c | `pr/07c-store-seed` | In-memory store (`Map`s, `createStore()` with `reset()`) + users repository (`src/app/repositories/`, routes → controllers → services → repositories from here on; `name` encrypted at rest) + seeded demo accounts (`SEED_DEMO_ACCOUNTS`, off in production), uses `lib/password` and `lib/crypto`. Posts: step 12 | – | S2, S3 | 🔍 |
-| 08 | `pr/08-jwt-access-token` | Sign/verify JWT (pinned algorithm, iss/aud), `authenticate` middleware | `lib/jwt` | S2 | ⬜ |
+| 07c | `pr/07c-store-seed` | In-memory store (`Map`s, `createStore()` with `reset()`) + users repository (`src/app/repositories/`, routes → controllers → services → repositories from here on; `name` encrypted at rest) + seeded demo accounts (`SEED_DEMO_ACCOUNTS`, off in production), uses `lib/password` and `lib/crypto`. Posts: step 12 | – | S2, S3 | ✅ |
+| 08 | `pr/08-jwt-access-token` | Sign/verify JWT (pinned algorithm, iss/aud), `authenticate` middleware | `lib/jwt` | S2 | 🔍 |
 | 09 | `pr/09-register-login` | `POST /auth/register`, `/auth/login`, `GET /auth/me`, user-enumeration protection, strict rate limit on login/register | – | S2 | ⬜ |
 | 10 | `pr/10-refresh-token-rotation` | Refresh token in an httpOnly cookie, rotation, reuse detection, logout | `lib/refresh-tokens` | S2 | ⬜ |
 | 11 | `pr/11-csrf` | Signed double-submit CSRF + `Origin` check, `GET /auth/csrf` | `lib/csrf` | S1 | ⬜ |

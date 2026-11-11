@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { createEncryptor, DecryptionError } from '../../lib/crypto/index.js';
+import { authenticate, createAccessTokenService, InvalidTokenError } from '../../lib/jwt/index.js';
 import { createPasswordHasher, PasswordTooLongError } from '../../lib/password/index.js';
 import { rateLimit } from '../../lib/rate-limit/index.js';
 import { validate } from '../../lib/validation/index.js';
@@ -94,4 +95,47 @@ demoRouter.get('/password', rateLimit({ windowMs: 60_000, limit: 5, logger }), a
     needsRehash: { cost12Hash: demoPasswords.needsRehash(first), cost10Hash: demoPasswords.needsRehash(olderHash) },
     tooLong,
   });
+});
+
+// Demo of JWT access tokens: GET /jwt returns a token and shows which forged tokens are rejected; GET /jwt/protected
+// needs that token (`Authorization: Bearer <token>`). A 60-second lifetime, so you can watch it turn into TOKEN_EXPIRED.
+// Its own random secret, never JWT_SECRET: a public route must not hand out tokens that the real API accepts.
+const demoTokenOptions = { secret: randomBytes(32), issuer: 'demo-api', audience: 'demo-web', ttlSeconds: 60 };
+const demoTokens = createAccessTokenService(demoTokenOptions);
+const otherServiceTokens = createAccessTokenService({ ...demoTokenOptions, audience: 'another-service' });
+
+demoRouter.get('/jwt', (_req, res) => {
+  const tryVerify = (token: string) => {
+    try {
+      return demoTokens.verify(token);
+    } catch (error) {
+      if (error instanceof InvalidTokenError) return error.code;
+      throw error;
+    }
+  };
+  const toPart = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const fromPart = (part = '') => JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as Record<string, unknown>;
+
+  const token = demoTokens.sign({ sub: 'demo-user-id', role: 'user' });
+  const [header, payload, signature] = token.split('.');
+  res.json({
+    token,
+    // Anyone can read these two parts (base64url, not encrypted). Only the signature proves the server made them.
+    header: fromPart(header),
+    payload: fromPart(payload),
+    verify: {
+      valid: tryVerify(token),
+      // The payload changed to role "admin", the old signature kept: the signature no longer matches.
+      roleChangedToAdmin: tryVerify(`${header}.${toPart({ ...fromPart(payload), role: 'admin' })}.${signature}`),
+      // Header changed to "alg: none" (a classic attack). Rejected because only HS256 is accepted. (The old signature
+      // is kept: with an empty one, the library would reject it as "signature required" before checking `alg`.)
+      algNone: tryVerify(`${toPart({ alg: 'none', typ: 'JWT' })}.${payload}.${signature}`),
+      // Same secret, but made for another audience.
+      otherAudience: tryVerify(otherServiceTokens.sign({ sub: 'demo-user-id', role: 'user' })),
+    },
+  });
+});
+
+demoRouter.get('/jwt/protected', authenticate(demoTokens), (req, res) => {
+  res.json({ auth: req.auth });
 });
