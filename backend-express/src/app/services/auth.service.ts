@@ -41,15 +41,17 @@ export function createAuthService({ users, passwords, accessTokens }: AuthDeps) 
       // Fast path: no ~200 ms of bcrypt for an email that is clearly taken.
       if (users.findByEmail(input.email)) throw emailTaken();
       const passwordHash = await passwords.hash(input.password);
+      let user: User;
       try {
         // The role is set here, never taken from the request.
-        return issueTokens(users.create({ name: input.name, email: input.email, passwordHash, role: 'user' }));
+        user = users.create({ name: input.name, email: input.email, passwordHash, role: 'user' });
       } catch (error) {
         // Two registrations with the same email can both pass the check above while they await the hash; `create`
         // is the real guard. Same answer as the fast path, not a 500.
         if (error instanceof EmailTakenError) throw emailTaken();
         throw error;
       }
+      return issueTokens(user);
     },
 
     async login(email: string, password: string): Promise<AuthResult> {
