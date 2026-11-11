@@ -5,10 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 09a (login, PR #17)
-- **In review:** 09b (`pr/09b-register`): `POST /api/auth/register`
-- **Next step:** 09c (`pr/09c-auth-me`): `loadCurrentUser(users)` app glue (user by the token's `sub` → `req.user`,
-  missing user → 401 `UNAUTHORIZED`) + `GET /api/auth/me` → `{ user }` (public shape).
+- **Last merged step:** 09b (register, PR #18)
+- **In review:** 09c (`pr/09c-auth-me`): `loadCurrentUser(users)` → `req.user`, `GET /api/auth/me`
+- **Next step:** 10 (`pr/10-refresh-token-rotation`): refresh token in an httpOnly cookie, rotation, reuse detection,
+  logout (`lib/refresh-tokens`). Too big for one PR: propose a split (`10a`, `10b`, ...) to the user before coding.
 
 ## How to resume after `/clear`
 
@@ -39,7 +39,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 08 | JWT access token | ✅ PR #15 | `lib/jwt` (`createAccessTokenService` → `sign`, `verify`; `authenticate`); `JWT_SECRET`; demo `/api/demo/jwt`. Merged with `role` in the token |
 | – | Token = user ID only | ✅ PR #16 (`fix/jwt-sub-only`) | Removes `role` from the token (user's decision). Pushed after PR #15 was merged, so it needed its own PR |
 | 09a | Login | ✅ PR #17 | `auth.schemas.ts`, `auth.service.ts`, `auth.controller.ts`, `auth.routes.ts`; `createApp({ users })`; `accessTokens` glue |
-| 09b | Register | 🔍 `pr/09b-register` | `registerSchema`, `register()` → 201, 409 `EMAIL_TAKEN`, register limiter 5/hour |
+| 09b | Register | ✅ PR #18 | `registerSchema`, `register()` → 201, 409 `EMAIL_TAKEN`, register limiter 5/hour |
+| 09c | Current user + `/me` | 🔍 `pr/09c-auth-me` | `middleware/current-user.middleware.ts` (`loadCurrentUser`), `requireUser` chain in `app.ts`, `GET /api/auth/me` |
 
 ## Decisions (and why)
 
@@ -251,6 +252,16 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Register limiter (step 09b):** 5 requests per hour per IP, its own counter (a fresh user must still be able to log
   in). Invalid requests count too. Per IP, so people behind one shared IP (office, school, mobile carrier) share the 5:
   accepted trade-off. Not `skipFailedRequests`: it would also skip the 409s and allow mass email probing.
+- **Current user (step 09c):** `loadCurrentUser(users)` in `src/app/middleware/` (new folder, files
+  `<name>.middleware.ts`): app glue, not in `lib/jwt`, so the module stays free of the store. Runs after `authenticate`,
+  loads the user by `req.auth.sub` on every protected request, and sets `req.user` = `PublicUser` (global
+  `Express.Request` augmentation in the same file). The public shape on purpose: no `passwordHash` on the request, so
+  `res.json(req.user)` or a log line cannot leak it. A missing user → 401 `UNAUTHORIZED` "Authentication required"
+  + `WWW-Authenticate: Bearer` (same as a missing token; the frontend logs in again). No `req.auth` (wiring mistake) →
+  500, fail closed; the `me` handler also throws (500) if `req.user` is missing. `app.ts` builds
+  `requireUser = [authenticate(accessTokens), loadCurrentUser(users)]` once and passes it to routers
+  (`createAuthRouter({ auth, requireUser })`); step 12 passes the same chain to the posts and admin routers.
+  `GET /api/auth/me` → `{ user }`, global limiter only (the frontend calls it on every page load), `no-store` from the router.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 

@@ -17,5 +17,13 @@ export function createAuthController(auth: AuthService) {
     res.status(201).json(result);
   };
 
-  return { login, register };
+  const me: RequestHandler = (req, res) => {
+    const user = req.user;
+    // The route runs `loadCurrentUser` first, which answers 401 when there is no user. Getting here without one is a
+    // wiring mistake: fail closed (500), never answer with an empty user.
+    if (!user) throw new Error('GET /me needs loadCurrentUser before it');
+    res.json({ user });
+  };
+
+  return { login, register, me };
 }

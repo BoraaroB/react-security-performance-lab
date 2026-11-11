@@ -1,10 +1,12 @@
 import express from 'express';
 import { errorHandler, notFoundHandler } from '../lib/errors/index.js';
+import { authenticate } from '../lib/jwt/index.js';
 import { createRequestLogger } from '../lib/logger/index.js';
 import { rateLimit } from '../lib/rate-limit/index.js';
 import { corsPolicy, securityHeaders } from '../lib/security/index.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
+import { loadCurrentUser } from './middleware/current-user.middleware.js';
 import type { UsersRepository } from './repositories/users.repository.js';
 import { createAuthRouter } from './routes/auth.routes.js';
 import { demoRouter } from './routes/demo.js';
@@ -62,7 +64,13 @@ export function createApp({ users }: AppDeps) {
   app.use('/api/health', healthRouter);
   // Composition root: build each layer once and pass it to the next one.
   const authService = createAuthService({ users, passwords, accessTokens });
-  app.use('/api/auth', createAuthRouter(authService));
+  // Two steps for every protected route: check the token's signature (`req.auth`), then load the user it belongs to
+  // (`req.user`). Built once here, so every router that needs a logged-in user gets the same chain.
+  const checkToken = authenticate(accessTokens);
+  const loadUser = loadCurrentUser(users);
+  const requireUser = [checkToken, loadUser];
+  const authRouter = createAuthRouter({ auth: authService, requireUser });
+  app.use('/api/auth', authRouter);
   if (config.enableDemoRoutes) app.use('/api/demo', demoRouter);
 
   // Must come after all routes: 404 for anything unmatched, then one handler that turns every error into JSON.

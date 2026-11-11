@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { rateLimit } from '../../lib/rate-limit/index.js';
 import { validate } from '../../lib/validation/index.js';
 import { createAuthController } from '../controllers/auth.controller.js';
@@ -6,7 +6,13 @@ import { logger } from '../logger.js';
 import { loginSchema, registerSchema } from '../schemas/auth.schemas.js';
 import type { AuthService } from '../services/auth.service.js';
 
-export function createAuthRouter(auth: AuthService) {
+export interface AuthRouterDeps {
+  auth: AuthService;
+  /** Middleware that lets only a logged-in user through and sets `req.user` (built once in `app.ts`). */
+  requireUser: RequestHandler[];
+}
+
+export function createAuthRouter({ auth, requireUser }: AuthRouterDeps) {
   const router = Router();
   const controller = createAuthController(auth);
 
@@ -39,6 +45,8 @@ export function createAuthRouter(auth: AuthService) {
 
   router.post('/login', loginLimiter, validate({ body: loginSchema }), controller.login);
   router.post('/register', registerLimiter, validate({ body: registerSchema }), controller.register);
+  // No strict limiter: the frontend calls /me on every page load, and only the global limit applies.
+  router.get('/me', requireUser, controller.me);
 
   return router;
 }
