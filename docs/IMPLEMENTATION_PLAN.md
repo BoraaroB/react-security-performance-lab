@@ -32,7 +32,9 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 07b | `pr/07b-password-hashing` | bcrypt hash/verify, cost factor, 72-byte limit, `needsRehash`, demo route | `lib/password` | S2 | ✅ |
 | 07c | `pr/07c-store-seed` | In-memory store (`Map`s, `createStore()` with `reset()`) + users repository (`src/app/repositories/`, routes → controllers → services → repositories from here on; `name` encrypted at rest) + seeded demo accounts (`SEED_DEMO_ACCOUNTS`, off in production), uses `lib/password` and `lib/crypto`. Posts: step 12 | – | S2, S3 | ✅ |
 | 08 | `pr/08-jwt-access-token` | Sign/verify JWT (pinned algorithm, iss/aud), `authenticate` middleware | `lib/jwt` | S2 | ✅ |
-| 09 | `pr/09-register-login` | `POST /auth/register`, `/auth/login`, `GET /auth/me`, user-enumeration protection, strict rate limit on login/register | – | S2 | ⬜ |
+| 09a | `pr/09a-login` | `POST /auth/login`: same 401 and same timing for unknown email and wrong password (dummy hash), strict login limiter, `Cache-Control: no-store`, public user shape, rehash on login | – | S2 | 🔍 |
+| 09b | `pr/09b-register` | `POST /auth/register`: password rules, `EmailTakenError` handling, own strict limiter | – | S2 | ⬜ |
+| 09c | `pr/09c-auth-me` | `loadCurrentUser` (user by the token's `sub` → `req.user`, missing user → 401), `GET /auth/me` | – | S2 | ⬜ |
 | 10 | `pr/10-refresh-token-rotation` | Refresh token in an httpOnly cookie, rotation, reuse detection, logout | `lib/refresh-tokens` | S2 | ⬜ |
 | 11 | `pr/11-csrf` | Signed double-submit CSRF + `Origin` check, `GET /auth/csrf` | `lib/csrf` | S1 | ⬜ |
 | 12 | `pr/12-rbac-posts` | Roles (`user`/`admin`), `authorize(...)`, resource ownership, posts CRUD, admin routes | `lib/rbac` | S2 | ⬜ |

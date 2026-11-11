@@ -17,6 +17,14 @@ export interface User {
   createdAt: string;
 }
 
+/** What clients may see about a user. Picked field by field (an allowlist), so a field added to `User` later is not
+ * sent to clients by accident. */
+export type PublicUser = Pick<User, 'id' | 'email' | 'name' | 'role'>;
+
+export function toPublicUser({ id, email, name, role }: User): PublicUser {
+  return { id, email, name, role };
+}
+
 /** The email is already registered. Catch it and answer exactly like the `findByEmail` check does. */
 export class EmailTakenError extends Error {
   readonly code = 'EMAIL_TAKEN';
@@ -84,6 +92,12 @@ export function createUsersRepository(store: Store, encryptor: Encryptor) {
     findByEmail(email: string): User | undefined {
       const id = store.userIdsByEmail.get(normalizeEmail(email));
       return id === undefined ? undefined : findById(id);
+    },
+
+    /** Replaces the stored bcrypt hash (e.g. an upgrade to a higher cost at login). Does nothing for an unknown ID. */
+    updatePasswordHash(id: string, passwordHash: string): void {
+      const record = store.users.get(id);
+      if (record) record.passwordHash = passwordHash;
     },
   };
 }

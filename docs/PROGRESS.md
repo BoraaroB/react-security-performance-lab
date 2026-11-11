@@ -5,10 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 08 (JWT access tokens, PR #15)
-- **In review:** `fix/jwt-sub-only`: the access token carries only `sub`, no `role` (this commit missed PR #15, see below)
-- **Next step:** 09 (`pr/09-register-login`): register, login, `GET /auth/me`, user-enumeration protection, strict login limiter, load the current user by the token's `sub`.
-  Probably too big for one PR: propose a 09a/09b split (e.g. register/login vs. `loadCurrentUser` + `/auth/me`)
+- **Last merged step:** 08 (JWT access tokens, PR #15) + `fix/jwt-sub-only` (PR #16)
+- **In review:** 09a (`pr/09a-login`): `POST /api/auth/login`
+- **Next step:** 09b (`pr/09b-register`): `POST /api/auth/register` (Zod schema with password rules and the 72-byte
+  limit, `EmailTakenError` → same answer as the `findByEmail` check, own strict limiter). Then 09c (`loadCurrentUser` + `GET /auth/me`).
 
 ## How to resume after `/clear`
 
@@ -37,7 +37,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 07b | Password hashing | ✅ PR #13 | `lib/password` (`createPasswordHasher` → `hash`, `verify`, `needsRehash`); `bcryptjs` |
 | 07c | Store + seed | ✅ PR #14 | `store.ts`, `repositories/users.repository.ts`, `security.ts`, `seed.ts`; `SEED_DEMO_ACCOUNTS`; posts deferred to step 12 |
 | 08 | JWT access token | ✅ PR #15 | `lib/jwt` (`createAccessTokenService` → `sign`, `verify`; `authenticate`); `JWT_SECRET`; demo `/api/demo/jwt`. Merged with `role` in the token |
-| – | Token = user ID only | 🔍 `fix/jwt-sub-only` | Removes `role` from the token (user's decision). Pushed after PR #15 was merged, so it needs its own PR |
+| – | Token = user ID only | ✅ PR #16 (`fix/jwt-sub-only`) | Removes `role` from the token (user's decision). Pushed after PR #15 was merged, so it needed its own PR |
+| 09a | Login | 🔍 `pr/09a-login` | `auth.schemas.ts`, `auth.service.ts`, `auth.controller.ts`, `auth.routes.ts`; `createApp({ users })`; `accessTokens` glue |
 
 ## Decisions (and why)
 
@@ -212,6 +213,26 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `security.ts`) is created in step 09, where it is first used; in step 08 only the config validates the secret.
 - **JWT demo (step 08):** `GET /api/demo/jwt` and `/api/demo/jwt/protected` use their own random secret and a 60 s TTL,
   never `JWT_SECRET` (a public route must not hand out tokens the real API accepts).
+- **Step 09 split (user's choice):** 09a = login, 09b = register, 09c = `loadCurrentUser` + `GET /auth/me`. One concept per PR.
+- **Login (step 09a):** `createAuthService({ users, passwords, accessTokens })` in `src/app/services/`. An unknown email
+  runs `verify` against a dummy hash (a random UUID hashed once at startup with the same hasher, so the same cost),
+  so it takes as long as a wrong password (measured: 0.198 s vs 0.200 s). Both answer 401 `INVALID_CREDENTIALS`
+  "Invalid email or password". The service throws `AppError` (framework-free, from `lib/errors/core`); the controller
+  only maps request → service → JSON. After a successful login, `needsRehash` → `users.updatePasswordHash` (new hash at
+  the current cost). Response: `{ accessToken, user }`, `user` = `toPublicUser()` (allowlist `id`, `email`, `name`, `role`).
+  The refresh cookie comes in step 10.
+- **Request schemas (step 09a, new folder):** `src/app/schemas/<name>.schemas.ts` (Zod body schemas + their types).
+  Not in the controller (routes and controller both need them) and not in the routes (the controller imports the type).
+  Login: email `trim` → `z.email()` → max 254; password 1–72 characters (a longer one can never match a bcrypt hash,
+  and bcrypt is not run for it). The format check gives the frontend field errors; it reveals nothing about accounts.
+- **Auth routes (step 09a):** `createAuthRouter(auth)` sets `Cache-Control: no-store` on every response from the auth
+  router (first middleware, so errors inside it get it too). Responses produced before the router (global 429, malformed
+  JSON 400, 413) do not get it; they carry no tokens or user data. Login limiter: 10 requests / 15 min per IP, counts successful logins too,
+  created inside the router factory. Register (09b) gets its own limiter instance (separate counter).
+- **Dependency injection (step 09a):** `createApp({ users })`: `index.ts` creates the store and repository (it already
+  needed them for seeding) and passes them in. The auth service is built inside `createApp` from the shared
+  `passwords` and `accessTokens` (`security.ts`).
+- **`passwordHash` redacted (step 09a):** added in `src/app/logger.ts` via `redactKeys` (glue, not a `lib/logger` change).
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -241,21 +262,27 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   built-in file tools are. Full coverage would need Claude Code's Bash sandbox (not enabled; the user decides).
 - **JSON limit vs post size (found in 05a review):** the 32 kb limit in `app.ts` assumes post content ≤ 10,000 characters.
   Step 12 must keep that limit in its Zod schema, or raise the JSON limit; otherwise valid posts get 413 instead of `VALIDATION_ERROR`.
-- No `Cache-Control: no-store` on API responses yet (helmet does not set it). Responses with tokens or user data
-  should not be cached by the browser or proxies → add it with the auth routes (steps 09–10).
+- `Cache-Control: no-store` is set only on `/api/auth/*` (09a). Other routes with user data (posts, admin, step 12)
+  should get it too.
 - **Key rotation (07a):** not supported. Changing `DATA_ENCRYPTION_KEY` makes all encrypted values unreadable (with an
   in-memory store that only matters within one run). The `v1.` prefix leaves room for a key ID later.
 - **Encrypted values are not searchable (07a):** a random IV means `encrypt(x)` differs every time, so lookups by an
   encrypted field need a blind index (HMAC). Decided in 07c: `email` stays plain text, only `name` is encrypted.
-- **Public user shape (07c → step 09):** `User` contains `passwordHash`, and the logger does not redact that key.
-  Step 09 must map users to a public shape (`id`, `email`, `name`, `role`) before `res.json`, and should add
-  `passwordHash` to the redact keys as a safety net.
-- **User enumeration timing (07b → step 09):** login must run `verify` against a dummy hash when the email does not
-  exist, or the faster response reveals which accounts exist. Not in `lib/password` yet; step 09 adds it.
 - **bcrypt CPU on the main thread (07b):** `bcryptjs` async hashing yields between chunks, but it still uses the main
-  thread's CPU. Many parallel logins slow every request; the strict login limiter (step 09) is the mitigation.
+  thread's CPU. Many parallel logins slow every request; the strict login limiter (09a) is the mitigation. It is per IP, so a
+  botnet with many IPs is not stopped; per-account throttling or lockout is not planned (lockout lets anyone lock out a victim).
 - **JWT key rotation (08):** one secret, no `kid`. Changing `JWT_SECRET` invalidates every access token at once
   (users must refresh; harmless with 15 min tokens). Several services would need RS256/EdDSA with public keys.
 - **Access tokens cannot be revoked (08):** a stolen token works until it expires (≤ 15 min). Logout/reuse detection
   in step 10 revoke only the refresh token. A deny-list would make JWTs stateful; not planned.
-- npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
+- **Login has no CSRF check yet (09a → step 11):** the API contract and the security rules require one. The risk is
+  low today (`express.json` ignores form bodies, and a cross-site JSON POST needs a CORS preflight), but once step 10
+  sets the refresh cookie, login CSRF (logging the victim into the attacker's account) becomes real. Login CSRF needs a
+  pre-session token from `GET /auth/csrf`.
+- **Dummy hash vs older costs (09a):** the dummy hash uses the CURRENT bcrypt cost. After the cost is raised, accounts
+  that still have an older (cheaper) hash answer a wrong password faster than an unknown email, so they can be told
+  apart until their next login upgrades the hash. Not reachable today (in-memory store, every hash at cost 12).
+- **No client IP on failed logins (09a, low):** failed logins and login 429s are logged without `req.ip`, so operators
+  cannot see which IPs are attacking. Fix idea: `ip: req.ip` in the request log, or one auth-failure line with the IP
+  (never the password). Small side PR later.
+ on install; `tsx` works without approving any scripts.

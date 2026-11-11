@@ -5,14 +5,23 @@ import { rateLimit } from '../lib/rate-limit/index.js';
 import { corsPolicy, securityHeaders } from '../lib/security/index.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
+import type { UsersRepository } from './repositories/users.repository.js';
+import { createAuthRouter } from './routes/auth.routes.js';
 import { demoRouter } from './routes/demo.js';
 import { healthRouter } from './routes/health.js';
+import { accessTokens, passwords } from './security.js';
+import { createAuthService } from './services/auth.service.js';
+
+export interface AppDeps {
+  users: UsersRepository;
+}
 
 /**
  * Builds the Express app without starting it, so tests can use the app without opening a port.
+ * The repository comes in as a parameter (dependency injection), so a test can pass a fresh, empty store.
  * Middleware order matters.
  */
-export function createApp() {
+export function createApp({ users }: AppDeps) {
   const app = express();
 
   // Don't advertise "X-Powered-By: Express"; it helps attackers pick known exploits.
@@ -51,6 +60,7 @@ export function createApp() {
   app.use(express.json({ limit: '32kb' }));
 
   app.use('/api/health', healthRouter);
+  app.use('/api/auth', createAuthRouter(createAuthService({ users, passwords, accessTokens })));
   if (config.enableDemoRoutes) app.use('/api/demo', demoRouter);
 
   // Must come after all routes: 404 for anything unmatched, then one handler that turns every error into JSON.
