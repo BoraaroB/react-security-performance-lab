@@ -60,7 +60,9 @@ export function createApp({ users }: AppDeps) {
   app.use(express.json({ limit: '32kb' }));
 
   app.use('/api/health', healthRouter);
-  app.use('/api/auth', createAuthRouter(createAuthService({ users, passwords, accessTokens })));
+  // Composition root: build each layer once and pass it to the next one.
+  const authService = createAuthService({ users, passwords, accessTokens });
+  app.use('/api/auth', createAuthRouter(authService));
   if (config.enableDemoRoutes) app.use('/api/demo', demoRouter);
 
   // Must come after all routes: 404 for anything unmatched, then one handler that turns every error into JSON.
