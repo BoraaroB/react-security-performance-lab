@@ -1,5 +1,6 @@
-// Glue: the app-wide encryptor, password hasher and access-token service, configured from `config`. One instance each, shared by everyone.
+// Glue: the app-wide encryptor, password hasher, access-token and CSRF-token services, configured from `config`. One instance each, shared by everyone.
 import { createEncryptor } from '../lib/crypto/index.js';
+import { createCsrfTokenService } from '../lib/csrf/index.js';
 import { createAccessTokenService } from '../lib/jwt/index.js';
 import { createPasswordHasher } from '../lib/password/index.js';
 import { config } from './config.js';
@@ -16,3 +17,5 @@ export const accessTokens = createAccessTokenService({
   issuer: 'react-security-lab-api',
   audience: 'react-security-lab-web',
 });
+
+export const csrfTokens = createCsrfTokenService({ secret: config.csrfSecret });

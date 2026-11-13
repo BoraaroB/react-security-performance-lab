@@ -41,9 +41,11 @@ export interface AuthRouterDeps {
   /** Middleware that lets only a logged-in user through and sets `req.user` (built once in `app.ts`). */
   requireUser: RequestHandler[];
   limiters: AuthLimiters;
+  /** `GET /csrf` handler: sets the CSRF cookie and returns the token (from `createCsrfProtection` in `app.ts`). */
+  issueCsrfToken: RequestHandler;
 }
 
-export function createAuthRouter({ auth, requireUser, limiters }: AuthRouterDeps) {
+export function createAuthRouter({ auth, requireUser, limiters, issueCsrfToken }: AuthRouterDeps) {
   const router = Router();
   const controller = createAuthController(auth);
 
@@ -54,13 +56,16 @@ export function createAuthRouter({ auth, requireUser, limiters }: AuthRouterDeps
     next();
   });
 
+  // The frontend calls it before its first POST (also before login: login CSRF would log the victim into an
+  // attacker's account). Global limit only. The CSRF check itself runs in app.ts, before this router.
+  router.get('/csrf', issueCsrfToken);
   router.post('/login', limiters.login, validate({ body: loginSchema }), controller.login);
   router.post('/register', limiters.register, validate({ body: registerSchema }), controller.register);
   // No strict limiter: a refresh token has 256 random bits, so guessing one is hopeless, and the frontend refreshes
-  // often (every 15 minutes per tab). The global limit still applies. CSRF check: step 11.
+  // often (every 15 minutes per tab). The global limit still applies.
   router.post('/refresh', controller.refresh);
   // No `requireUser`: the access token may already have expired, and logout must still end the session. The refresh
-  // cookie says which session to end. Global limit only. CSRF check: step 11.
+  // cookie says which session to end. Global limit only.
   router.post('/logout', controller.logout);
   // No strict limiter: the frontend calls /me on every page load, and only the global limit applies.
   router.get('/me', requireUser, controller.me);

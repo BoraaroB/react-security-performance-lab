@@ -71,7 +71,15 @@ const envSchema = z.object({
   JWT_SECRET: z
     .string({ error: 'required: run `node scripts/setup-env.mjs` to generate it' })
     .min(32, 'must be at least 32 characters; run `node scripts/setup-env.mjs` to generate one'),
+  // Required, no default: whoever knows it can create valid CSRF tokens. Its own value (one key per purpose).
+  CSRF_SECRET: z
+    .string({ error: 'required: run `node scripts/setup-env.mjs` to generate it' })
+    .min(32, 'must be at least 32 characters; run `node scripts/setup-env.mjs` to generate one'),
 }).superRefine((env, ctx) => {
+  // One key per purpose: a leak (or a weakness) in one use must not expose the other.
+  if (env.CSRF_SECRET === env.JWT_SECRET) {
+    ctx.addIssue({ code: 'custom', path: ['CSRF_SECRET'], message: 'must be different from JWT_SECRET' });
+  }
   // A plain-HTTP page can be changed by anyone on the network (e.g. public Wi-Fi), and its injected script could
   // read credentialed API responses. So production allows only https origins (localhost is fine for local testing).
   if (env.NODE_ENV !== 'production') return;
@@ -101,6 +109,7 @@ function loadConfig() {
       trustProxy: env.TRUST_PROXY === 0 ? false : env.TRUST_PROXY,
       dataEncryptionKey: env.DATA_ENCRYPTION_KEY,
       jwtSecret: env.JWT_SECRET,
+      csrfSecret: env.CSRF_SECRET,
     } as const;
   } catch (error) {
     if (error instanceof EnvValidationError) {

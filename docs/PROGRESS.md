@@ -5,11 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 10c (`POST /api/auth/logout`, PR #22)
-- **In review:** side PR `feat/mobile-auth`: `/api/mobile/auth/{register,login,refresh,logout}` with the refresh
-  token in the JSON body, mounted before CORS; login/register limiters shared with the web routes
-- **Next:** step 11 (`pr/11-csrf`). The CSRF check must apply only to the cookie routes (`/api/auth/*` and later the
-  rest of the web API), never to `/api/mobile/*` (no cookies there, so no CSRF; a native app has no CSRF token).
+- **Last merged:** 10c (`POST /api/auth/logout`, PR #22) and side PR `feat/mobile-auth` (PR #23)
+- **In review:** step 11 (`pr/11-csrf`): `lib/csrf` (Origin allowlist + signed double-submit token), `GET /api/auth/csrf`,
+  check on every unsafe web request, new required secret `CSRF_SECRET` (one PR, user's choice; no split)
+- **Next:** step 12 (`pr/12-rbac-posts`). Probably needs a split (roles/`authorize`, posts CRUD, admin routes): ask the user.
 
 ## How to resume after `/clear`
 
@@ -45,7 +44,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 10a | Refresh tokens (core) | ✅ PR #20 | `lib/refresh-tokens` (`createRefreshTokenService` → `issue`, `rotate`; `createMemoryRefreshTokenStore`); no HTTP yet |
 | 10b | Refresh cookie + `/refresh` | ✅ PR #21 | `__Secure-refresh_token` cookie on login/register, `POST /api/auth/refresh`, `cookie-parser`, `createApp({ users, refreshTokens })` |
 | 10c | Logout | ✅ PR #22 | `revoke(token)` in `lib/refresh-tokens`, `POST /api/auth/logout` → 204, cookie cleared |
-| – | Mobile auth | 🔍 `feat/mobile-auth` | `/api/mobile/auth/*`, refresh token in JSON, no CORS, `createAuthLimiters()` shared by web and mobile |
+| – | Mobile auth | ✅ PR #23 (`feat/mobile-auth`) | `/api/mobile/auth/*`, refresh token in JSON, no CORS, `createAuthLimiters()` shared by web and mobile |
+| 11 | CSRF | 🔍 `pr/11-csrf` | `lib/csrf` (`createCsrfTokenService`, `createCsrfProtection` → `protect`, `issueToken`), `GET /api/auth/csrf`, `CSRF_SECRET` |
 
 ## Decisions (and why)
 
@@ -338,20 +338,41 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   storage; send one refresh at a time (two parallel refreshes look like reuse and log the user out); replace the
   stored token after every refresh. Logout: missing `refreshToken` → 400 `VALIDATION_ERROR` (a client bug; the web
   route is always 204 because the browser may have no cookie). Nest (step 28) must implement these routes too.
+- **CSRF (step 11, one PR by the user's choice):** `lib/csrf` = `core.ts` (`createCsrfTokenService`, `isSafeMethod`,
+  `isAllowedOrigin`; only `node:crypto`) + `express.ts` (`createCsrfProtection({ tokens, allowedOrigins })` →
+  `{ protect, issueToken }`), depends on `lib/errors`. Every request except GET/HEAD/OPTIONS needs BOTH:
+  (1) `Origin` exactly in the allowlist (`config.corsOrigins`, the same list as CORS); a missing `Origin` and `null`
+  are rejected (only browsers use the cookie routes, and all current browsers send `Origin` on POST); (2) a token
+  `<random>.<HMAC-SHA256(CSRF_SECRET, random)>` (both parts 43 base64url characters) that is equal in the
+  `__Host-csrf` cookie and the `X-CSRF-Token` header (constant-time compare) and has a valid signature. Failures →
+  403 `CSRF_INVALID` with "Request origin is not allowed" or "Invalid or missing CSRF token" (safe to tell apart, helps
+  debugging). Cookie: `__Host-csrf; HttpOnly; Secure; SameSite=Strict; Path=/`, session cookie (no `Expires`).
+  `__Host-` stops a sibling subdomain from planting its own token (the classic double-submit attack); `HttpOnly` is
+  fine because the frontend reads the token from the JSON body. The signature only rejects made-up values: it does
+  NOT stop planting, because the token is not bound to a session and anyone can get a signed pair (found in review).
+  `GET /api/auth/csrf` returns the token from a still-valid cookie, or a new one (found in review: a new token on
+  every call broke the token other tabs held in memory). `no-store` from the auth router, global limit only.
+  Wiring: `app.use(csrf.protect)` right after `cookieParser()` and before every web router, so it covers all future
+  web routes (posts, admin) and runs before the strict login/register limiters (forged requests do not use up the
+  budget). The mobile chain is mounted earlier and is not covered (no cookies). `X-CSRF-Token` added to CORS
+  `allowedHeaders` (closes the 05b gap). Side effect: `POST /api/demo/validation` now needs `Origin` + token too
+  (curl: fetch `/api/auth/csrf` first, as in `docs/prs/11-csrf.md`), and an unsafe request to an unknown web path
+  gets 403 `CSRF_INVALID` instead of 404 (the check runs before the 404 handler; fails closed). `isAllowedOrigin`
+  rejects `null` even if a list contains it (found in review: a copied module could get "null" from an env var).
+- **`CSRF_SECRET` (step 11):** required, no default, ≥ 32 characters; `setup-env.mjs` generates 32 random bytes
+  (base64url). Its own value (one key per purpose): config rejects `CSRF_SECRET === JWT_SECRET` (found in review). Shared `csrfTokens` instance in `security.ts`.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
 ## Local state that is not in git
 
-- `backend-express/.env` exists locally (git-ignored). It needs `DATA_ENCRYPTION_KEY` (07a) and `JWT_SECRET` (08):
+- `backend-express/.env` exists locally (git-ignored). It needs `DATA_ENCRYPTION_KEY` (07a), `JWT_SECRET` (08) and `CSRF_SECRET` (11):
   run `node scripts/setup-env.mjs` (it fills empty secrets and keeps everything else).
 - Nothing else: `frontend/`, `backend-nest/`, and the root `package.json` were deleted on purpose.
   Each step creates its own files from scratch (frontend in step 14, Nest in step 26, root scripts in step 30).
 
 ## Known gaps (fixed in later steps)
 
-- **CORS header lists (05b):** step 11 must add the CSRF header (e.g. `X-CSRF-Token`) to `allowedHeaders` in `app.ts`,
-  or the browser blocks it for the frontend. (`Retry-After` and `RateLimit` were added to `exposedHeaders` in step 06.)
 - **Rate limit store (06):** in memory, per process. Several instances (or Docker replicas) would each count separately
   and a restart resets the counters. A Redis store is out of scope; mention it in the README of step 30/31.
 - **Rate-limit setup checks (06):** express-rate-limit runs each check (e.g. `X-Forwarded-For` without trusted proxy)
@@ -380,11 +401,6 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   (users must refresh; harmless with 15 min tokens). Several services would need RS256/EdDSA with public keys.
 - **Access tokens cannot be revoked (08):** a stolen token works until it expires (≤ 15 min). Logout/reuse detection
   in step 10 revoke only the refresh token. A deny-list would make JWTs stateful; not planned.
-- **Login, register, refresh, and logout have no CSRF check yet (09a/09b/10b/10c → step 11):** the API contract and the security rules require one. The risk is
-  low today (`express.json` ignores form bodies, and a cross-site JSON POST needs a CORS preflight), but now that 10b
-  sets the refresh cookie, login CSRF (logging the victim into the attacker's account) becomes real. Login CSRF needs a
-  pre-session token from `GET /auth/csrf`. `/refresh` needs no body, so a cross-site form could POST to it; until
-  step 11 only `SameSite=Strict` stops the browser from attaching the cookie to such a request.
 - **Dummy hash vs older costs (09a):** the dummy hash uses the CURRENT bcrypt cost. After the cost is raised, accounts
   that still have an older (cheaper) hash answer a wrong password faster than an unknown email, so they can be told
   apart until their next login upgrades the hash. Not reachable today (in-memory store, every hash at cost 12).
@@ -417,12 +433,20 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   needs a `deleteByUser(userId)` store method (and an index on `userId` in a database).
 - **Access tokens survive logout (10c):** an access token issued before logout keeps working until it expires
   (≤ 15 min, see "Access tokens cannot be revoked (08)"). The frontend drops it from memory on logout (step 21).
-- **Logout CSRF (10c → step 11):** without a CSRF check another site could log the user out. `SameSite=Strict` already
-  stops the browser from sending the cookie on cross-site requests; step 11 adds the CSRF check anyway.
 - **Mobile refresh token is a bearer secret (feat/mobile-auth):** whoever holds it can use it (until rotation
   reuse detection catches it). No device binding (DPoP, RFC 9449, or app attestation) is planned; a good interview topic.
 - **Mobile routes rely on separate origins (feat/mobile-auth review):** if the web frontend and the API ever share
   an origin (Vite dev proxy, nginx in step 32), `/api/mobile/*` must not be proxied on that origin, or an XSS could
   read a refresh token from JSON (it would still need the password or an existing refresh token).
 - **Mobile refresh reuse is not logged as a security event:** same gap as 10a (`REUSED` looks like `UNAUTHORIZED`).
+- **CSRF token not bound to a session (11):** any valid cookie + header pair works for any user. The `__Host-`
+  prefix is what stops planting; binding (HMAC over a session ID, rotated on login) would be stronger. Not planned.
+- **CSRF Origin list in a same-origin setup (11 → step 32):** `protect` uses `config.corsOrigins`. If nginx serves
+  the frontend and proxies `/api` on ONE origin (step 32), that origin must still be in `CORS_ORIGINS`, or every
+  POST gets 403 (production's default list is empty).
+- **Frontend must fetch the CSRF token (11 → step 21):** call `GET /api/auth/csrf` (with `credentials: 'include'`)
+  before the first POST, keep the token in memory, send `X-CSRF-Token` on every unsafe request, and fetch a new one
+  once after a 403 `CSRF_INVALID` (the session cookie was lost when the browser closed, or a page made the browser
+  navigate to `/api/auth/csrf` without the cookie, which sets a new one).
+- **Nest (step 28):** `CsrfGuard` must call the same `core.ts` and apply only to cookie routes, not `/api/mobile/*`.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
