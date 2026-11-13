@@ -28,6 +28,10 @@ try {
     // error.code: 'REFRESH_TOKEN_INVALID' or 'REFRESH_TOKEN_REUSED' → 401, the client logs in again
   }
 }
+
+// Logout: deletes the whole family. Never throws for a bad, unknown, used or expired token, so it is safe with
+// whatever the cookie holds (a failing store still rejects).
+await refreshTokens.revoke(tokenFromCookie);
 ```
 
 ## Options
@@ -42,7 +46,7 @@ try {
 
 | Export | Description |
 |---|---|
-| `createRefreshTokenService(options)` | Returns `{ issue(userId), rotate(token) }`; both resolve to `{ token, userId, expiresAt }` |
+| `createRefreshTokenService(options)` | Returns `{ issue(userId), rotate(token), revoke(token) }`; `issue` and `rotate` resolve to `{ token, userId, expiresAt }` |
 | `RefreshTokenError` | Thrown by `rotate`, `code`: `REFRESH_TOKEN_INVALID` or `REFRESH_TOKEN_REUSED` |
 | `RefreshTokenConfigError` | `code: 'INVALID_REFRESH_TOKEN_CONFIG'`, thrown by `createRefreshTokenService` |
 | `createMemoryRefreshTokenStore()` | In-process `RefreshTokenStore` with `clear()` |
@@ -54,6 +58,9 @@ try {
   has 256 random bits, so there is nothing to guess.
 - **`markUsed` must be atomic** in your own store (`UPDATE ... WHERE used_at IS NULL`). Otherwise two requests with
   the same stolen token could both get a new one, and the reuse would never be seen.
+- **`revoke` never throws** for a malformed, unknown, used or expired token: logout must always succeed (idempotent),
+  and a different answer would tell a caller whether a token was real. It deletes the whole family (that login only;
+  the user's other devices stay logged in).
 - **Two tabs refreshing at once** look like reuse and log the user out. The client should send one refresh at a time
   (single-flight) and share the result.
 - **Used and expired records stay** in the memory store until restart (used ones are needed for reuse detection

@@ -48,6 +48,9 @@ export function createAuthRouter({ auth, requireUser }: AuthRouterDeps) {
   // No strict limiter: a refresh token has 256 random bits, so guessing one is hopeless, and the frontend refreshes
   // often (every 15 minutes per tab). The global limit still applies. CSRF check: step 11.
   router.post('/refresh', controller.refresh);
+  // No `requireUser`: the access token may already have expired, and logout must still end the session. The refresh
+  // cookie says which session to end. Global limit only. CSRF check: step 11.
+  router.post('/logout', controller.logout);
   // No strict limiter: the frontend calls /me on every page load, and only the global limit applies.
   router.get('/me', requireUser, controller.me);
 
