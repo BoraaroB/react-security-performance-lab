@@ -9,14 +9,14 @@ Step 12 is split (user's choice): 12a roles + admin list, 12b posts list/create,
 
 ## Changes
 - `backend-express/src/lib/rbac/core.ts`: `hasRole(role, allowedRoles)` (deny by default, exact match) and `RbacConfigError`.
-- `backend-express/src/lib/rbac/express.ts`: `createAuthorize({ getRole })` → `authorize(...roles)` middleware.
+- `backend-express/src/lib/rbac/express.ts`: `authorize({ allowedRoles, getRole })` → middleware.
   No roles → throws at startup; no user on the request (wiring mistake) → 500; wrong role → 403.
 - `backend-express/src/lib/rbac/index.ts`, `README.md`: public API and usage.
 - `backend-express/src/app/repositories/users.repository.ts`: `findAll()`.
 - `backend-express/src/app/services/admin.service.ts`, `controllers/admin.controller.ts`: `listUsers` → public user shape.
 - `backend-express/src/app/routes/admin.routes.ts`: `Cache-Control: no-store`, then `requireAdmin` for the WHOLE
   router (future admin routes are protected by default), then `GET /users`.
-- `backend-express/src/app/app.ts`: `requireAdmin = [...requireUser, authorize('admin')]`, router mounted at `/api/admin`.
+- `backend-express/src/app/app.ts`: `requireAdmin = [...requireUser, adminOnly]` (`authorize` with `['admin']`), router mounted at `/api/admin`.
 
 ## How to test
 `npm run dev` in `backend-express`, then:
@@ -34,8 +34,8 @@ curl -i -H "Authorization: Bearer $ADMIN" localhost:4000/api/admin/users # 200 {
 ## How to reuse in another project
 Copy `src/lib/rbac/` and `src/lib/errors/`, install `express`.
 ```ts
-const authorize = createAuthorize({ getRole: (req) => req.user?.role });
-adminRouter.use(requireUser, authorize('admin'));
+const adminOnly = authorize({ allowedRoles: ['admin'], getRole: (req) => req.user?.role });
+adminRouter.use(requireUser, adminOnly);
 ```
 
 ## Verification
@@ -44,7 +44,7 @@ adminRouter.use(requireUser, authorize('admin'));
 - Smoke test (`tsx src/index.ts` + curl): no token → 401 + `WWW-Authenticate: Bearer`; user → 403; admin → 200 with
   both seeded users (no `passwordHash`); all three with `Cache-Control: no-store`. `GET /api/admin/nope` → 403 for a
   user, 404 for an admin.
-- Temporary script: `authorize()` with no roles → `RbacConfigError`; no user on the request → `next(Error)` (500);
+- Temporary script: `authorize` with `allowedRoles: []` → `RbacConfigError`; no user on the request → `next(Error)` (500);
   `hasRole(undefined, ['admin'])` and `hasRole('admin', [])` → `false`.
 
 ## Review
@@ -54,6 +54,9 @@ guard, case-insensitive paths, fresh role per request, public user shape, `no-st
   Wrong: a rest parameter (`...allowedRoles`) is always a new array. Copy and comment removed.
 - Fixed: the verification line said `lib/rbac` imports nothing from outside; it imports `lib/errors` (allowed, in the README).
 - Fixed: a known gap in `PROGRESS.md` still said "Step 12" for the post size limit; now "Step 12b".
+- Changed after the user's review: `createAuthorize({ getRole })` returned `authorize(...roles)`, which returned the
+  middleware (three nested functions). With one call site that only made it harder to read, so it is now one
+  function with options, like `cors({...})`: `authorize({ allowedRoles: ['admin'], getRole })`.
 - Postponed (both reviewers, low): `GET /api/admin/users` has no pagination; every call decrypts every name.
   Harmless with the in-memory demo; added to "Known gaps".
 

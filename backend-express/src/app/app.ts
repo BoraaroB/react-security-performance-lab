@@ -5,7 +5,7 @@ import { errorHandler, notFoundHandler } from '../lib/errors/index.js';
 import { authenticate } from '../lib/jwt/index.js';
 import { createRequestLogger } from '../lib/logger/index.js';
 import { rateLimit } from '../lib/rate-limit/index.js';
-import { createAuthorize } from '../lib/rbac/index.js';
+import { authorize } from '../lib/rbac/index.js';
 import type { RefreshTokenService } from '../lib/refresh-tokens/index.js';
 import { corsPolicy, securityHeaders } from '../lib/security/index.js';
 import { config } from './config.js';
@@ -62,8 +62,8 @@ export function createApp({ users, refreshTokens }: AppDeps) {
   const requireUser = [checkToken, loadUser];
   // The role comes from `req.user`, loaded from the store on this request (the token has no role), so a demoted
   // admin loses access at once.
-  const authorize = createAuthorize({ getRole: (req) => req.user?.role });
-  const requireAdmin = [...requireUser, authorize('admin')];
+  const adminOnly = authorize({ allowedRoles: ['admin'], getRole: (req) => req.user?.role });
+  const requireAdmin = [...requireUser, adminOnly];
   const adminService = createAdminService({ users });
   const authLimiters = createAuthLimiters();
   // Same origin list as CORS: the browser origins we trust to call the API with cookies.

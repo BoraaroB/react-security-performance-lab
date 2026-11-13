@@ -6,7 +6,7 @@ export interface AdminDeps {
 
 /**
  * Business logic for admin pages. It does not check the role itself: the admin router does that for every route
- * (`authorize('admin')`), so a new admin route cannot forget it.
+ * (`requireAdmin` in `app.ts`), so a new admin route cannot forget it.
  */
 export function createAdminService({ users }: AdminDeps) {
   return {

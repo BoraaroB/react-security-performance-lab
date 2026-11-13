@@ -1,6 +1,6 @@
 # rbac
 
-Role-based access control: `authorize('admin')` lets a request through only when the current user has one of the
+Role-based access control: `authorize({ allowedRoles: ['admin'], getRole })` lets a request through only when the current user has one of the
 listed roles, otherwise 403 `FORBIDDEN`. Authorization must happen on the server: hiding a button in the frontend
 does not stop anyone from calling the URL directly.
 
@@ -11,22 +11,22 @@ does not stop anyone from calling the URL directly.
 ## Usage
 
 ```ts
-import { createAuthorize } from './lib/rbac/index.js';
+import { authorize } from './lib/rbac/index.js';
 
-// Once: tell the module where the current user's role is. Your auth middleware must set it first.
-const authorize = createAuthorize({ getRole: (req) => req.user?.role });
+// `getRole` tells the module where the current user's role is. Your auth middleware must set it first.
+const adminOnly = authorize({ allowedRoles: ['admin'], getRole: (req) => req.user?.role });
 
 // Per route or router: authenticate → load the user → check the role.
-app.get('/api/admin/users', requireUser, authorize('admin'), listUsers);
-adminRouter.use(requireUser, authorize('admin')); // every route in the router, including future ones
+app.get('/api/admin/users', requireUser, adminOnly, listUsers);
+adminRouter.use(requireUser, adminOnly); // every route in the router, including future ones
 ```
 
 ## Options
 
 | Option | Type | Default | Description |
 |---|---|---|---|
+| `allowedRoles` | `Role[]` | – | At least one; an empty list throws `RbacConfigError` at startup |
 | `getRole` | `(req) => Role \| undefined` | – | Reads the current user's role. `undefined` = no user (a wiring mistake → 500) |
-| `...allowedRoles` (`authorize`) | `Role[]` | – | At least one; an empty list throws `RbacConfigError` at startup |
 
 ## Notes
 - **401 vs 403.** 401 = "who are you?" (no or bad token; log in). 403 = "I know who you are, and you may not do this".

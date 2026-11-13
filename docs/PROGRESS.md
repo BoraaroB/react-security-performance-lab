@@ -6,7 +6,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 ## Current state
 
 - **Last merged:** 11 (CSRF, PR #24)
-- **In review:** step 12a (`pr/12a-rbac-admin-users`): `lib/rbac` (`createAuthorize({ getRole })` → `authorize(...roles)`),
+- **In review:** step 12a (`pr/12a-rbac-admin-users`): `lib/rbac` (`authorize({ allowedRoles, getRole })`),
   `GET /api/admin/users` (admin only)
 - **Next:** step 12b (`pr/12b-posts`): posts store + repository, `GET /api/posts`, `POST /api/posts`.
 
@@ -364,13 +364,16 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Step 12 split (user's choice, 2026-11-13):** 12a = `lib/rbac` + `GET /admin/users`, 12b = posts list/create,
   12c = `DELETE /posts/:id` with ownership, 12d = `PATCH /admin/users/:id/role`. One concept per PR.
 - **RBAC (step 12a):** `lib/rbac` = `core.ts` (`hasRole(role, allowedRoles)`: deny by default, exact match, no role
-  hierarchy; `RbacConfigError`) + `express.ts` (`createAuthorize({ getRole })` → `authorize(...roles)`), depends on
+  hierarchy; `RbacConfigError`) + `express.ts` (`authorize({ allowedRoles, getRole })` → middleware), depends on
   `lib/errors`. `getRole` is a parameter so the module does not depend on the app's `req.user` type (two global
   declarations of `user` with different types would not compile). Glue: `getRole: (req) => req.user?.role`, the role
   of the user loaded on this request, never a token claim. No roles → `RbacConfigError` at startup; no user on the
   request (missing `requireUser`) → 500, fail closed and loud; wrong role → 403 `FORBIDDEN` "You do not have
-  permission to do this" (does not name the required role). `requireAdmin = [...requireUser, authorize('admin')]`
+  permission to do this" (does not name the required role). `requireAdmin = [...requireUser, adminOnly]`
   in `app.ts`.
+  One function with options (like `cors({...})`), not a factory that returns `authorize(...roles)` (user's review):
+  there is only one call site, so a function returning a function returning a middleware only made it harder to read.
+  `allowedRoles` is `NoInfer<Role>[]`, so the role type comes from `getRole` and a typo (`'admn'`) does not compile.
 - **Admin routes (step 12a):** `createAdminRouter({ admin, requireAdmin })` at `/api/admin`: `Cache-Control: no-store`
   first, then `router.use(requireAdmin)` for the whole router (a future admin route cannot forget it; an unknown
   `/api/admin/*` path gives a non-admin 401/403, an admin 404). `GET /users` → `{ users }` in the public shape (no
