@@ -1,4 +1,4 @@
-import type { RequestHandler, Response } from 'express';
+import type { CookieOptions, Request, RequestHandler, Response } from 'express';
 import type { LoginInput, RegisterInput } from '../schemas/auth.schemas.js';
 import type { AuthResult, AuthService } from '../services/auth.service.js';
 
@@ -10,14 +10,23 @@ const REFRESH_COOKIE = '__Secure-refresh_token';
 // register, /me, refresh, logout), not to the rest of the API, so fewer requests ever carry it.
 const REFRESH_COOKIE_PATH = '/api/auth';
 
+// Shared by set and clear: a browser deletes a cookie only when name, path (and domain) match the ones it was set with.
+const REFRESH_COOKIE_OPTIONS: CookieOptions = {
+  httpOnly: true, // JavaScript cannot read it, so an XSS bug cannot steal it
+  secure: true, // HTTPS only (Chrome, Firefox and curl treat http://localhost as secure, so dev works too)
+  sameSite: 'strict', // not sent on requests that another site starts (the main CSRF defense for this cookie)
+  path: REFRESH_COOKIE_PATH,
+};
+
 function setRefreshCookie(res: Response, refreshToken: AuthResult['refreshToken']) {
-  res.cookie(REFRESH_COOKIE, refreshToken.token, {
-    httpOnly: true, // JavaScript cannot read it, so an XSS bug cannot steal it
-    secure: true, // HTTPS only (Chrome, Firefox and curl treat http://localhost as secure, so dev works too)
-    sameSite: 'strict', // not sent on requests that another site starts (the main CSRF defense for this cookie)
-    path: REFRESH_COOKIE_PATH,
-    expires: refreshToken.expiresAt,
-  });
+  const options = { ...REFRESH_COOKIE_OPTIONS, expires: refreshToken.expiresAt };
+  res.cookie(REFRESH_COOKIE, refreshToken.token, options);
+}
+
+function readRefreshCookie(req: Request): string | undefined {
+  // cookie-parser turns a value that starts with "j:" into an object, so only a string is a token.
+  const cookieValue: unknown = req.cookies[REFRESH_COOKIE];
+  return typeof cookieValue === 'string' ? cookieValue : undefined;
 }
 
 function sendAuthResult(res: Response, result: AuthResult, status = 200) {
@@ -43,11 +52,20 @@ export function createAuthController(auth: AuthService) {
   };
 
   const refresh: RequestHandler = async (req, res) => {
-    // cookie-parser turns a value that starts with "j:" into an object, so only a string is a token.
-    const cookieValue: unknown = req.cookies[REFRESH_COOKIE];
-    const token = typeof cookieValue === 'string' ? cookieValue : undefined;
+    const token = readRefreshCookie(req);
     const result = await auth.refresh(token);
     sendAuthResult(res, result);
+  };
+
+  const logout: RequestHandler = async (req, res) => {
+    const token = readRefreshCookie(req);
+    // Revoke on the server: clearing the cookie alone only forgets the token in this browser, while a copy (e.g.
+    // stolen earlier) would keep working for up to 30 days. And revoke FIRST: if it fails (e.g. the database is down),
+    // the cookie stays and the client can retry; clearing it first would leave a live session nobody can end.
+    await auth.logout(token);
+    res.clearCookie(REFRESH_COOKIE, REFRESH_COOKIE_OPTIONS);
+    // 204 No Content: logged out, nothing to send. Always the same answer, with or without a valid cookie.
+    res.status(204).end();
   };
 
   const me: RequestHandler = (req, res) => {
@@ -58,5 +76,5 @@ export function createAuthController(auth: AuthService) {
     res.json({ user });
   };
 
-  return { login, register, refresh, me };
+  return { login, register, refresh, logout, me };
 }

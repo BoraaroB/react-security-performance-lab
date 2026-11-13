@@ -114,6 +114,15 @@ export function createAuthService({ users, passwords, accessTokens, refreshToken
       if (!user) throw sessionEnded();
       return toAuthResult(user, refreshToken);
     },
+
+    /**
+     * Ends the session of this refresh token (its whole family). No token, or one that is already dead, is not an
+     * error: the user wants to be logged out, and they are. The access token is not needed: it may have expired already.
+     */
+    async logout(token: string | undefined): Promise<void> {
+      if (!token) return;
+      await refreshTokens.revoke(token);
+    },
   };
 }
 

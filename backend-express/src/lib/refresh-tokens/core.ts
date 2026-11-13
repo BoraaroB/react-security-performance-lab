@@ -71,6 +71,11 @@ export interface RefreshTokenService {
   issue(userId: string): Promise<IssuedRefreshToken>;
   /** Uses up `token` and returns its replacement in the same family, or throws `RefreshTokenError`. */
   rotate(token: string): Promise<IssuedRefreshToken>;
+  /**
+   * Ends the session `token` belongs to: deletes its whole family. Never throws for a malformed, unknown, used or
+   * expired token, so logout always succeeds and its answer reveals nothing about the token.
+   */
+  revoke(token: string): Promise<void>;
 }
 
 // A plain fast hash is enough here, unlike passwords: the token is 256 random bits, so there is nothing to brute-force.
@@ -144,6 +149,16 @@ export function createRefreshTokenService(options: RefreshTokenOptions): Refresh
         throw new RefreshTokenError('REFRESH_TOKEN_REUSED');
       }
       return next;
+    },
+
+    async revoke(token) {
+      if (!TOKEN_PATTERN.test(token)) return;
+      const tokenHash = hashToken(token);
+      const record = await store.find(tokenHash);
+      if (!record) return;
+      // The whole family, not just this token: after rotation the browser holds only the newest token, but older
+      // used ones (maybe a stolen copy) belong to the same login and must stop working too.
+      await store.deleteFamily(record.familyId);
     },
   };
 }

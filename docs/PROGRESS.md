@@ -5,9 +5,16 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 10a (`lib/refresh-tokens`, PR #20)
-- **In review:** 10b (`pr/10b-refresh-cookie`): refresh cookie on login/register, `POST /api/auth/refresh`
-- **Next step:** 10c (`pr/10c-logout`): `POST /api/auth/logout` (revoke the family, clear the cookie → 204).
+- **Last merged step:** 10b (refresh cookie + `POST /api/auth/refresh`, PR #21)
+- **In review:** 10c (`pr/10c-logout`): `revoke(token)` in `lib/refresh-tokens`, `POST /api/auth/logout` → 204
+- **Next:** a side PR `feat/mobile-auth` (agreed with the user on 2026-11-13, before step 11), then step 11
+  (`pr/11-csrf`). Mobile shape: new routes, e.g. `/api/mobile/auth/login`, `/refresh`, `/logout`, with the refresh
+  token in the JSON body (response and request), never a cookie; reuse `auth.service` and `lib/refresh-tokens`
+  unchanged. No CORS on mobile routes (otherwise XSS on the web frontend could read the refresh token from JSON and
+  defeat `httpOnly`). Step 11's CSRF check must then apply only to cookie-authenticated requests, not to mobile routes.
+  Client side (docs only): refresh token in iOS Keychain / Android Keystore, single-flight refresh. Description in
+  `docs/prs/feat-mobile-auth.md`. Split if it grows past ~150 lines. The workflow docs (CLAUDE.md, the `next-step`
+  skill, both reviewer agents) know only `chore/*` and `fix/*` side branches: that PR adds `feat/*` to those lists.
 
 ## How to resume after `/clear`
 
@@ -41,7 +48,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 09b | Register | ✅ PR #18 | `registerSchema`, `register()` → 201, 409 `EMAIL_TAKEN`, register limiter 5/hour |
 | 09c | Current user + `/me` | ✅ PR #19 | `middleware/current-user.middleware.ts` (`loadCurrentUser`), `requireUser` chain in `app.ts`, `GET /api/auth/me` |
 | 10a | Refresh tokens (core) | ✅ PR #20 | `lib/refresh-tokens` (`createRefreshTokenService` → `issue`, `rotate`; `createMemoryRefreshTokenStore`); no HTTP yet |
-| 10b | Refresh cookie + `/refresh` | 🔍 `pr/10b-refresh-cookie` | `__Secure-refresh_token` cookie on login/register, `POST /api/auth/refresh`, `cookie-parser`, `createApp({ users, refreshTokens })` |
+| 10b | Refresh cookie + `/refresh` | ✅ PR #21 | `__Secure-refresh_token` cookie on login/register, `POST /api/auth/refresh`, `cookie-parser`, `createApp({ users, refreshTokens })` |
+| 10c | Logout | 🔍 `pr/10c-logout` | `revoke(token)` in `lib/refresh-tokens`, `POST /api/auth/logout` → 204, cookie cleared |
 
 ## Decisions (and why)
 
@@ -308,6 +316,12 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   (defaults) and passes it in: `createApp({ users, refreshTokens })` (stateful things come in from outside, like
   `users`). The module's memory store is used, not a repository over `store.ts` (that would copy the same Map code), so
   `store.reset()` does not clear refresh tokens; a test creates a fresh refresh-token store instead.
+- **Logout (step 10c):** `refreshTokens.revoke(token)` = format check → hash → `find` → `deleteFamily` (the whole
+  login, so an older stolen copy dies too). It never throws (malformed, unknown, used, expired → nothing to do).
+  `POST /api/auth/logout`: revoke first, then `res.clearCookie` with the SAME options as `res.cookie` (shared
+  `REFRESH_COOKIE_OPTIONS`; a different `path` would leave the cookie in the browser), then 204. Always 204, with or
+  without a cookie (idempotent, no oracle). No `requireUser`: the access token may have expired. Global limit only,
+  `no-store` from the router. Ends only this login; the user's other sessions stay. CSRF check: step 11.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -350,7 +364,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   (users must refresh; harmless with 15 min tokens). Several services would need RS256/EdDSA with public keys.
 - **Access tokens cannot be revoked (08):** a stolen token works until it expires (≤ 15 min). Logout/reuse detection
   in step 10 revoke only the refresh token. A deny-list would make JWTs stateful; not planned.
-- **Login, register, and refresh have no CSRF check yet (09a/09b/10b → step 11):** the API contract and the security rules require one. The risk is
+- **Login, register, refresh, and logout have no CSRF check yet (09a/09b/10b/10c → step 11):** the API contract and the security rules require one. The risk is
   low today (`express.json` ignores form bodies, and a cross-site JSON POST needs a CORS preflight), but now that 10b
   sets the refresh cookie, login CSRF (logging the victim into the attacker's account) becomes real. Login CSRF needs a
   pre-session token from `GET /auth/csrf`. `/refresh` needs no body, so a cross-site form could POST to it; until
@@ -382,8 +396,11 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   subdomain of the same site (e.g. a hacked `blog.example.com`) could still set a `Domain=example.com` cookie with the
   same name. Only `__Host-` (needs `Path=/`) or keeping untrusted subdomains off the site prevents that.
 - **A failed refresh does not clear the cookie (10b):** a dead `refresh_token` cookie stays in the browser until it
-  expires or the user logs in again (harmless: it is useless). Logout (10c) clears it.
-- **For 10c and later (from the 10a security review):** `revoke(token)` = hash → `find` → `deleteFamily`, and it must
-  not throw for an unknown or used token (logout stays idempotent and reveals nothing). There is no "revoke every
-  family of a user" (`deleteByUser`) yet; a password change or "log out everywhere" needs it.
+  expires, the user logs in again, or logs out (10c clears it; harmless anyway: it is useless).
+- **No "log out everywhere" (10c):** logout ends only the current login. A password change or "log out of all devices"
+  needs a `deleteByUser(userId)` store method (and an index on `userId` in a database).
+- **Access tokens survive logout (10c):** an access token issued before logout keeps working until it expires
+  (≤ 15 min, see "Access tokens cannot be revoked (08)"). The frontend drops it from memory on logout (step 21).
+- **Logout CSRF (10c → step 11):** without a CSRF check another site could log the user out. `SameSite=Strict` already
+  stops the browser from sending the cookie on cross-site requests; step 11 adds the CSRF check anyway.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
