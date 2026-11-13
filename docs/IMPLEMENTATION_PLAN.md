@@ -35,8 +35,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 09a | `pr/09a-login` | `POST /auth/login`: same 401 and same timing for unknown email and wrong password (dummy hash), strict login limiter, `Cache-Control: no-store`, public user shape, rehash on login | – | S2 | ✅ |
 | 09b | `pr/09b-register` | `POST /auth/register`: password rules, `EmailTakenError` handling, own strict limiter | – | S2 | ✅ |
 | 09c | `pr/09c-auth-me` | `loadCurrentUser` (user by the token's `sub` → `req.user`, missing user → 401), `GET /auth/me` | – | S2 | ✅ |
-| 10a | `pr/10a-refresh-tokens` | Opaque refresh tokens stored as SHA-256 hashes, rotation (each token works once), reuse detection (revokes the family), sliding + absolute expiry, in-memory store | `lib/refresh-tokens` | S2 | 🔍 |
-| 10b | `pr/10b-refresh-cookie` | Refresh token in an httpOnly `SameSite=Strict` cookie on login/register, `POST /auth/refresh` | – | S2 | ⬜ |
+| 10a | `pr/10a-refresh-tokens` | Opaque refresh tokens stored as SHA-256 hashes, rotation (each token works once), reuse detection (revokes the family), sliding + absolute expiry, in-memory store | `lib/refresh-tokens` | S2 | ✅ |
+| 10b | `pr/10b-refresh-cookie` | Refresh token in an httpOnly `SameSite=Strict` cookie on login/register, `POST /auth/refresh` | – | S2 | 🔍 |
 | 10c | `pr/10c-logout` | `POST /auth/logout`: revoke the family, clear the cookie → 204 | `lib/refresh-tokens` (extended) | S2 | ⬜ |
 | 11 | `pr/11-csrf` | Signed double-submit CSRF + `Origin` check, `GET /auth/csrf` | `lib/csrf` | S1 | ⬜ |
 | 12 | `pr/12-rbac-posts` | Roles (`user`/`admin`), `authorize(...)`, resource ownership, posts CRUD, admin routes | `lib/rbac` | S2 | ⬜ |

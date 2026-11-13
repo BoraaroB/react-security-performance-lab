@@ -6,9 +6,13 @@ import { encryptor, passwords } from './app/security.js';
 import { seedDemoAccounts } from './app/seed.js';
 import { createStore } from './app/store.js';
 import { registerGracefulShutdown } from './lib/graceful-shutdown/index.js';
+import { createMemoryRefreshTokenStore, createRefreshTokenService } from './lib/refresh-tokens/index.js';
 
 const store = createStore();
 const users = createUsersRepository(store, encryptor);
+// In memory, like the users: every session ends on restart. Defaults: 7 days per token, 30 days per login.
+const refreshTokenStore = createMemoryRefreshTokenStore();
+const refreshTokens = createRefreshTokenService({ store: refreshTokenStore });
 
 if (config.seedDemoAccounts) {
   const created = await seedDemoAccounts(users, passwords);
@@ -17,7 +21,7 @@ if (config.seedDemoAccounts) {
   else logger.info({ accounts: created }, 'Seeded demo accounts');
 }
 
-const app = createApp({ users });
+const app = createApp({ users, refreshTokens });
 
 // Express 5 passes listen errors (e.g. EADDRINUSE: port already taken) to this callback instead of throwing them.
 const server = app.listen(config.port, (error) => {

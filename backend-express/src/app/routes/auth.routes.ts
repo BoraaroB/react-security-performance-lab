@@ -45,6 +45,9 @@ export function createAuthRouter({ auth, requireUser }: AuthRouterDeps) {
 
   router.post('/login', loginLimiter, validate({ body: loginSchema }), controller.login);
   router.post('/register', registerLimiter, validate({ body: registerSchema }), controller.register);
+  // No strict limiter: a refresh token has 256 random bits, so guessing one is hopeless, and the frontend refreshes
+  // often (every 15 minutes per tab). The global limit still applies. CSRF check: step 11.
+  router.post('/refresh', controller.refresh);
   // No strict limiter: the frontend calls /me on every page load, and only the global limit applies.
   router.get('/me', requireUser, controller.me);
 

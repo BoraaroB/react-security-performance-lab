@@ -1,8 +1,10 @@
+import cookieParser from 'cookie-parser';
 import express from 'express';
 import { errorHandler, notFoundHandler } from '../lib/errors/index.js';
 import { authenticate } from '../lib/jwt/index.js';
 import { createRequestLogger } from '../lib/logger/index.js';
 import { rateLimit } from '../lib/rate-limit/index.js';
+import type { RefreshTokenService } from '../lib/refresh-tokens/index.js';
 import { corsPolicy, securityHeaders } from '../lib/security/index.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
@@ -16,14 +18,16 @@ import { createAuthService } from './services/auth.service.js';
 
 export interface AppDeps {
   users: UsersRepository;
+  refreshTokens: RefreshTokenService;
 }
 
 /**
  * Builds the Express app without starting it, so tests can use the app without opening a port.
- * The repository comes in as a parameter (dependency injection), so a test can pass a fresh, empty store.
+ * Everything that holds state (users, refresh tokens) comes in as a parameter (dependency injection), so a test can
+ * pass a fresh, empty store.
  * Middleware order matters.
  */
-export function createApp({ users }: AppDeps) {
+export function createApp({ users, refreshTokens }: AppDeps) {
   const app = express();
 
   // Don't advertise "X-Powered-By: Express"; it helps attackers pick known exploits.
@@ -60,16 +64,20 @@ export function createApp({ users }: AppDeps) {
   // or a reverse proxy, not by this.) The biggest planned request, a post (10,000 characters, up to ~30 kb in UTF-8
   // with non-Latin text), still fits.
   app.use(express.json({ limit: '32kb' }));
+  // Fills `req.cookies` (the refresh-token cookie). No secret: cookies are not signed here, the refresh token is a
+  // random value the server looks up, so a forged one is simply unknown.
+  app.use(cookieParser());
 
   app.use('/api/health', healthRouter);
   // Composition root: build each layer once and pass it to the next one.
-  const authService = createAuthService({ users, passwords, accessTokens });
+  const authService = createAuthService({ users, passwords, accessTokens, refreshTokens });
   // Two steps for every protected route: check the token's signature (`req.auth`), then load the user it belongs to
   // (`req.user`). Built once here, so every router that needs a logged-in user gets the same chain.
   const checkToken = authenticate(accessTokens);
   const loadUser = loadCurrentUser(users);
   const requireUser = [checkToken, loadUser];
   const authRouter = createAuthRouter({ auth: authService, requireUser });
+  // If this path changes, change the refresh cookie's Path in auth.controller.ts too, or browsers stop sending it.
   app.use('/api/auth', authRouter);
   if (config.enableDemoRoutes) app.use('/api/demo', demoRouter);
 
