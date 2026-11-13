@@ -15,6 +15,7 @@ const secretsByProject = {
   'backend-express': {
     DATA_ENCRYPTION_KEY: () => randomBytes(32).toString('base64'), // 256-bit AES key
     JWT_SECRET: () => randomBytes(32).toString('base64url'), // 256-bit HMAC secret
+    CSRF_SECRET: () => randomBytes(32).toString('base64url'), // 256-bit HMAC secret
   },
 };
 

@@ -1,5 +1,6 @@
 import cookieParser from 'cookie-parser';
 import express from 'express';
+import { createCsrfProtection } from '../lib/csrf/index.js';
 import { errorHandler, notFoundHandler } from '../lib/errors/index.js';
 import { authenticate } from '../lib/jwt/index.js';
 import { createRequestLogger } from '../lib/logger/index.js';
@@ -14,7 +15,7 @@ import { createAuthLimiters, createAuthRouter } from './routes/auth.routes.js';
 import { demoRouter } from './routes/demo.js';
 import { healthRouter } from './routes/health.js';
 import { createMobileAuthRouter } from './routes/mobile-auth.routes.js';
-import { accessTokens, passwords } from './security.js';
+import { accessTokens, csrfTokens, passwords } from './security.js';
 import { createAuthService } from './services/auth.service.js';
 
 export interface AppDeps {
@@ -57,6 +58,8 @@ export function createApp({ users, refreshTokens }: AppDeps) {
   const loadUser = loadCurrentUser(users);
   const requireUser = [checkToken, loadUser];
   const authLimiters = createAuthLimiters();
+  // Same origin list as CORS: the browser origins we trust to call the API with cookies.
+  const csrf = createCsrfProtection({ tokens: csrfTokens, allowedOrigins: config.corsOrigins });
 
   // Mobile auth: mounted BEFORE CORS on purpose, so its responses never get CORS headers. Native apps do not need
   // them (CORS is a browser rule). A browser page on another origin (even our own frontend, if an XSS bug runs code
@@ -72,11 +75,13 @@ export function createApp({ users, refreshTokens }: AppDeps) {
 
   // Before the body parser and routes: preflight (OPTIONS) requests are answered here, and error responses (400, 404,
   // 413, 500) also carry CORS headers, so the frontend can read the error JSON. Credentials: the refresh-token cookie.
+  // Allowed headers: X-CSRF-Token too, or the browser blocks the frontend's CSRF header in the preflight.
   // Exposed headers: the frontend's JavaScript may read the request ID and the rate-limit headers (when to retry).
   app.use(
     corsPolicy({
       allowedOrigins: config.corsOrigins,
       credentials: true,
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
       exposedHeaders: ['X-Request-Id', 'Retry-After', 'RateLimit', 'RateLimit-Policy'],
     }),
   );
@@ -95,9 +100,13 @@ export function createApp({ users, refreshTokens }: AppDeps) {
   // Fills `req.cookies` (the refresh-token cookie). No secret: cookies are not signed here, the refresh token is a
   // random value the server looks up, so a forged one is simply unknown.
   app.use(cookieParser());
+  // Every POST/PUT/PATCH/DELETE from here on needs an allowed Origin and the CSRF token (GET/HEAD/OPTIONS skip it).
+  // After cookie-parser (it reads the CSRF cookie); before the routes and their strict limiters, so forged requests
+  // never reach a handler or use up a user's login budget. The mobile routes above are not covered: they use no cookies.
+  app.use(csrf.protect);
 
   app.use('/api/health', healthRouter);
-  const authRouter = createAuthRouter({ auth: authService, requireUser, limiters: authLimiters });
+  const authRouter = createAuthRouter({ auth: authService, requireUser, limiters: authLimiters, issueCsrfToken: csrf.issueToken });
   // If this path changes, change the refresh cookie's Path in auth.controller.ts too, or browsers stop sending it.
   app.use('/api/auth', authRouter);
   if (config.enableDemoRoutes) app.use('/api/demo', demoRouter);
