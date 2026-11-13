@@ -37,7 +37,7 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 09c | `pr/09c-auth-me` | `loadCurrentUser` (user by the token's `sub` → `req.user`, missing user → 401), `GET /auth/me` | – | S2 | ✅ |
 | 10a | `pr/10a-refresh-tokens` | Opaque refresh tokens stored as SHA-256 hashes, rotation (each token works once), reuse detection (revokes the family), sliding + absolute expiry, in-memory store | `lib/refresh-tokens` | S2 | ✅ |
 | 10b | `pr/10b-refresh-cookie` | Refresh token in an httpOnly `SameSite=Strict` cookie on login/register, `POST /auth/refresh` | – | S2 | ✅ |
-| 10c | `pr/10c-logout` | `POST /auth/logout`: revoke the family, clear the cookie → 204 | `lib/refresh-tokens` (extended) | S2 | 🔍 |
+| 10c | `pr/10c-logout` | `POST /auth/logout`: revoke the family, clear the cookie → 204 | `lib/refresh-tokens` (extended) | S2 | ✅ |
 | 11 | `pr/11-csrf` | Signed double-submit CSRF + `Origin` check, `GET /auth/csrf` | `lib/csrf` | S1 | ⬜ |
 | 12 | `pr/12-rbac-posts` | Roles (`user`/`admin`), `authorize(...)`, resource ownership, posts CRUD, admin routes | `lib/rbac` | S2 | ⬜ |
 | 13 | `pr/13-oauth-github` | OAuth 2.0 Authorization Code + PKCE + `state` (optional, needs GitHub keys) | `lib/oauth` | S2 | ⬜ |
@@ -123,7 +123,11 @@ Rules:
 | POST | `/api/auth/login` | CSRF, rate limit | `{ email, password }` → `{ accessToken, user }` + refresh cookie |
 | POST | `/api/auth/refresh` | CSRF, refresh cookie | rotates the refresh token → `{ accessToken, user }` |
 | POST | `/api/auth/logout` | CSRF | revokes the session, clears the cookie → 204 |
-| GET | `/api/auth/me` | JWT | `{ user }` |
+| GET | `/api/auth/me` | JWT | `{ user }` (web and mobile) |
+| POST | `/api/mobile/auth/register` | rate limit (shared with web), no CORS | `{ name, email, password }` → `{ accessToken, refreshToken, refreshTokenExpiresAt, user }` |
+| POST | `/api/mobile/auth/login` | rate limit (shared with web), no CORS | `{ email, password }` → `{ accessToken, refreshToken, refreshTokenExpiresAt, user }` |
+| POST | `/api/mobile/auth/refresh` | no CORS | `{ refreshToken }` → rotates it → same shape as login |
+| POST | `/api/mobile/auth/logout` | no CORS | `{ refreshToken }` → revokes the session → 204 |
 | GET | `/api/auth/oauth/github` | – | redirect to GitHub |
 | GET | `/api/auth/oauth/github/callback` | `state` + PKCE | redirect to the frontend |
 | GET | `/api/posts` | JWT | `{ posts }` |
@@ -132,6 +136,9 @@ Rules:
 | GET | `/api/admin/users` | JWT, role `admin` | `{ users }` |
 | PATCH | `/api/admin/users/:id/role` | JWT, CSRF, role `admin` | `{ role }` → `{ user }` |
 | GET | `/api/demo/rate-limit` | 5 requests per minute | rate-limit demo |
+
+Mobile routes (`/api/mobile/*`, side PR `feat/mobile-auth`) never use cookies, so they need no CSRF check; they are
+mounted before CORS, so browsers cannot read them. Nest (step 28) implements them too.
 
 Errors: `{ "error": { "code", "message", "details"?, "requestId" } }`. Key codes: `VALIDATION_ERROR`, `UNAUTHORIZED`,
 `TOKEN_EXPIRED`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `FORBIDDEN`, `CSRF_INVALID`, `RATE_LIMITED`, `NOT_FOUND`, `INTERNAL_ERROR`.

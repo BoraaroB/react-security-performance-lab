@@ -25,8 +25,9 @@ export interface AuthDeps {
 export interface AuthResult {
   accessToken: string;
   /**
-   * Goes only into the httpOnly cookie, never into the JSON body (JavaScript, and so XSS, could read it there).
-   * So never `res.json()` an AuthResult as it is: the controller's `sendAuthResult` picks the safe fields.
+   * Web: goes only into the httpOnly cookie, never into the JSON body (JavaScript, and so XSS, could read it there).
+   * Mobile: goes into the JSON body, but only on /api/mobile routes, which have no CORS (see app.ts).
+   * So never `res.json()` an AuthResult as it is: each controller picks the fields it may send.
    */
   refreshToken: IssuedRefreshToken;
   user: PublicUser;

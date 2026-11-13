@@ -13,7 +13,7 @@ Do the sections in order: implement → verify → PR description → docs → r
 1. Read `docs/PROGRESS.md` (current state, decisions, known gaps) and `docs/IMPLEMENTATION_PLAN.md`.
    Take the first ⬜ row unless the user named a step number.
 2. Run `git switch main && git pull`, then check `git status` and `git log`:
-   - Every branch listed under "In review" in `docs/PROGRESS.md` (`pr/*`, `chore/*`, `fix/*`) must be merged:
+   - Every branch listed under "In review" in `docs/PROGRESS.md` (`pr/*`, `chore/*`, `fix/*`, `feat/*`) must be merged:
      `git merge-base --is-ancestor <branch> origin/main`. If one is not, **ask** the user to merge it first.
      Do not continue without an answer. Never merge or push yourself.
    - Untracked files that belong to future steps (e.g. another project's `package.json`) may stay.

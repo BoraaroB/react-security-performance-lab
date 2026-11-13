@@ -5,21 +5,16 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged step:** 10b (refresh cookie + `POST /api/auth/refresh`, PR #21)
-- **In review:** 10c (`pr/10c-logout`): `revoke(token)` in `lib/refresh-tokens`, `POST /api/auth/logout` → 204
-- **Next:** a side PR `feat/mobile-auth` (agreed with the user on 2026-11-13, before step 11), then step 11
-  (`pr/11-csrf`). Mobile shape: new routes, e.g. `/api/mobile/auth/login`, `/refresh`, `/logout`, with the refresh
-  token in the JSON body (response and request), never a cookie; reuse `auth.service` and `lib/refresh-tokens`
-  unchanged. No CORS on mobile routes (otherwise XSS on the web frontend could read the refresh token from JSON and
-  defeat `httpOnly`). Step 11's CSRF check must then apply only to cookie-authenticated requests, not to mobile routes.
-  Client side (docs only): refresh token in iOS Keychain / Android Keystore, single-flight refresh. Description in
-  `docs/prs/feat-mobile-auth.md`. Split if it grows past ~150 lines. The workflow docs (CLAUDE.md, the `next-step`
-  skill, both reviewer agents) know only `chore/*` and `fix/*` side branches: that PR adds `feat/*` to those lists.
+- **Last merged step:** 10c (`POST /api/auth/logout`, PR #22)
+- **In review:** side PR `feat/mobile-auth`: `/api/mobile/auth/{register,login,refresh,logout}` with the refresh
+  token in the JSON body, mounted before CORS; login/register limiters shared with the web routes
+- **Next:** step 11 (`pr/11-csrf`). The CSRF check must apply only to the cookie routes (`/api/auth/*` and later the
+  rest of the web API), never to `/api/mobile/*` (no cookies there, so no CSRF; a native app has no CSRF token).
 
 ## How to resume after `/clear`
 
 1. `git switch main && git pull`
-2. Check that EVERY branch listed under "In review" (`pr/*`, `chore/*`, `fix/*`) is merged:
+2. Check that EVERY branch listed under "In review" (`pr/*`, `chore/*`, `fix/*`, `feat/*`) is merged:
    `git merge-base --is-ancestor <branch> origin/main`. If unsure, ask the user.
 3. Merged → run the `next-step` skill. Not merged → ask the user before doing anything else.
 
@@ -49,7 +44,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 09c | Current user + `/me` | ✅ PR #19 | `middleware/current-user.middleware.ts` (`loadCurrentUser`), `requireUser` chain in `app.ts`, `GET /api/auth/me` |
 | 10a | Refresh tokens (core) | ✅ PR #20 | `lib/refresh-tokens` (`createRefreshTokenService` → `issue`, `rotate`; `createMemoryRefreshTokenStore`); no HTTP yet |
 | 10b | Refresh cookie + `/refresh` | ✅ PR #21 | `__Secure-refresh_token` cookie on login/register, `POST /api/auth/refresh`, `cookie-parser`, `createApp({ users, refreshTokens })` |
-| 10c | Logout | 🔍 `pr/10c-logout` | `revoke(token)` in `lib/refresh-tokens`, `POST /api/auth/logout` → 204, cookie cleared |
+| 10c | Logout | ✅ PR #22 | `revoke(token)` in `lib/refresh-tokens`, `POST /api/auth/logout` → 204, cookie cleared |
+| – | Mobile auth | 🔍 `feat/mobile-auth` | `/api/mobile/auth/*`, refresh token in JSON, no CORS, `createAuthLimiters()` shared by web and mobile |
 
 ## Decisions (and why)
 
@@ -322,6 +318,26 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `REFRESH_COOKIE_OPTIONS`; a different `path` would leave the cookie in the browser), then 204. Always 204, with or
   without a cookie (idempotent, no oracle). No `requireUser`: the access token may have expired. Global limit only,
   `no-store` from the router. Ends only this login; the user's other sessions stay. CSRF check: step 11.
+- **Mobile auth (side PR `feat/mobile-auth`, agreed with the user 2026-11-13):** native apps get their own routes
+  `/api/mobile/auth/{register,login,refresh,logout}` (`routes/mobile-auth.routes.ts`, `controllers/mobile-auth.controller.ts`,
+  `schemas/mobile-auth.schemas.ts`). Same `auth.service` and `lib/refresh-tokens`, unchanged: same rotation, reuse
+  detection, expiry. The refresh token travels in the JSON body: response `{ accessToken, refreshToken,
+  refreshTokenExpiresAt, user }`, request `{ refreshToken }` (Zod: string 1–256; the lib checks the exact format).
+  Never a cookie (no `cookieParser` in the mobile chain), so no CSRF check is needed. **No CORS:** mounted in `app.ts`
+  BEFORE `corsPolicy`, with its own chain (`globalLimiter` + `parseJson`, the same instances as the web chain) and its
+  own `notFoundHandler`, so an unknown `/api/mobile/*` path never reaches the CORS middleware. A browser therefore
+  cannot read these responses, and a cross-origin JSON POST fails the preflight (Express answers `OPTIONS` with
+  `Allow` only). Why it matters: an XSS bug on the web frontend must not be able to get a refresh token from JSON,
+  which would defeat `httpOnly`. **This holds only while the web frontend is on a different origin than the API**
+  (found in review): with a dev proxy or nginx serving the frontend and proxying `/api` on one origin, CORS does not
+  apply, so step 32 (and any dev proxy in step 14+) must keep `/api/mobile` unreachable from the web origin. The decision is made by Express's mount (case-insensitive, like routing), not by a
+  string check on the path (`/API/MOBILE/...` was tested). Current user: `GET /api/auth/me` with a Bearer token (it
+  reads no cookie). `createAuthLimiters()` (in `auth.routes.ts`) creates the login and register limiters once; both
+  routers get the same instances, so web + mobile share ONE budget per IP (otherwise 10 + 10 password guesses).
+  Client side (not in this repo): store the refresh token in the iOS Keychain / Android Keystore, never in plain
+  storage; send one refresh at a time (two parallel refreshes look like reuse and log the user out); replace the
+  stored token after every refresh. Logout: missing `refreshToken` → 400 `VALIDATION_ERROR` (a client bug; the web
+  route is always 204 because the browser may have no cookie). Nest (step 28) must implement these routes too.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -403,4 +419,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   (≤ 15 min, see "Access tokens cannot be revoked (08)"). The frontend drops it from memory on logout (step 21).
 - **Logout CSRF (10c → step 11):** without a CSRF check another site could log the user out. `SameSite=Strict` already
   stops the browser from sending the cookie on cross-site requests; step 11 adds the CSRF check anyway.
+- **Mobile refresh token is a bearer secret (feat/mobile-auth):** whoever holds it can use it (until rotation
+  reuse detection catches it). No device binding (DPoP, RFC 9449, or app attestation) is planned; a good interview topic.
+- **Mobile routes rely on separate origins (feat/mobile-auth review):** if the web frontend and the API ever share
+  an origin (Vite dev proxy, nginx in step 32), `/api/mobile/*` must not be proxied on that origin, or an XSS could
+  read a refresh token from JSON (it would still need the password or an existing refresh token).
+- **Mobile refresh reuse is not logged as a security event:** same gap as 10a (`REUSED` looks like `UNAUTHORIZED`).
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
