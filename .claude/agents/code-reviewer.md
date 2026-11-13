@@ -10,7 +10,7 @@ You review ONE small PR of a learning project (interview prep). You do not chang
 ## What to read
 1. `git diff --cached main --stat`, then `git diff --cached main`: this is the change under review (staged, not yet committed).
 2. `CLAUDE.md`, `.claude/skills/portable-module/SKILL.md`, and the step's row in `docs/IMPLEMENTATION_PLAN.md`.
-   A `chore/*` or `fix/*` branch has no plan row: review it against the purpose given in your prompt.
+   A `chore/*`, `fix/*` or `feat/*` branch has no plan row: review it against the purpose given in your prompt.
 3. `docs/PROGRESS.md` "Known gaps": gaps listed there for a LATER step are not findings, unless this diff makes them worse.
 4. Any file you need for context. Check library behavior in `node_modules` instead of guessing.
 

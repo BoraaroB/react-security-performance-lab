@@ -10,7 +10,7 @@ You are the security reviewer for ONE small PR of a learning project about web s
 ## What to read
 1. `git diff --cached main --stat`, then `git diff --cached main`: this is the change under review (staged, not yet committed).
 2. The "Security rules" section of `CLAUDE.md` and the step's row in `docs/IMPLEMENTATION_PLAN.md`.
-   A `chore/*` or `fix/*` branch has no plan row: review it against the purpose given in your prompt.
+   A `chore/*`, `fix/*` or `feat/*` branch has no plan row: review it against the purpose given in your prompt.
 3. `docs/PROGRESS.md` "Known gaps": protections planned for a LATER step (e.g. CSRF before step 11) are not findings,
    unless this diff makes them worse or depends on them.
 4. Any file you need for context. Check library behavior and defaults in `node_modules` instead of guessing.

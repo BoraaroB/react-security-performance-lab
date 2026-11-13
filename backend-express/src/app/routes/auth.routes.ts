@@ -6,23 +6,11 @@ import { logger } from '../logger.js';
 import { loginSchema, registerSchema } from '../schemas/auth.schemas.js';
 import type { AuthService } from '../services/auth.service.js';
 
-export interface AuthRouterDeps {
-  auth: AuthService;
-  /** Middleware that lets only a logged-in user through and sets `req.user` (built once in `app.ts`). */
-  requireUser: RequestHandler[];
-}
-
-export function createAuthRouter({ auth, requireUser }: AuthRouterDeps) {
-  const router = Router();
-  const controller = createAuthController(auth);
-
-  // Auth responses carry tokens and personal data: the browser, proxies and CDNs must not keep a copy (e.g. on a
-  // shared computer, where the next person could see them in the cache). Set first, so error responses get it too.
-  router.use((_req, res, next) => {
-    res.set('Cache-Control', 'no-store');
-    next();
-  });
-
+/**
+ * The strict login and register limiters. Created once in app.ts and shared by the web and the mobile auth routers,
+ * so both count against ONE budget per IP: separate limiters would give a password guesser 10 tries per router.
+ */
+export function createAuthLimiters() {
   // Much stricter than the global limit: 10 tries per 15 minutes per IP makes password guessing slow, and caps how
   // much bcrypt CPU one client can burn. Only on login itself; other auth routes (e.g. /me) must not share this limit.
   const loginLimiter = rateLimit({
@@ -43,8 +31,31 @@ export function createAuthRouter({ auth, requireUser }: AuthRouterDeps) {
     logger,
   });
 
-  router.post('/login', loginLimiter, validate({ body: loginSchema }), controller.login);
-  router.post('/register', registerLimiter, validate({ body: registerSchema }), controller.register);
+  return { login: loginLimiter, register: registerLimiter };
+}
+
+export type AuthLimiters = ReturnType<typeof createAuthLimiters>;
+
+export interface AuthRouterDeps {
+  auth: AuthService;
+  /** Middleware that lets only a logged-in user through and sets `req.user` (built once in `app.ts`). */
+  requireUser: RequestHandler[];
+  limiters: AuthLimiters;
+}
+
+export function createAuthRouter({ auth, requireUser, limiters }: AuthRouterDeps) {
+  const router = Router();
+  const controller = createAuthController(auth);
+
+  // Auth responses carry tokens and personal data: the browser, proxies and CDNs must not keep a copy (e.g. on a
+  // shared computer, where the next person could see them in the cache). Set first, so error responses get it too.
+  router.use((_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  });
+
+  router.post('/login', limiters.login, validate({ body: loginSchema }), controller.login);
+  router.post('/register', limiters.register, validate({ body: registerSchema }), controller.register);
   // No strict limiter: a refresh token has 256 random bits, so guessing one is hopeless, and the frontend refreshes
   // often (every 15 minutes per tab). The global limit still applies. CSRF check: step 11.
   router.post('/refresh', controller.refresh);

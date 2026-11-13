@@ -34,7 +34,7 @@ so work can continue after `/clear` without any chat history.
 - `main` is always working. Each step has a branch `pr/NN-short-name` (e.g. `pr/02-error-handling`).
 - Remote: `origin` = https://github.com/BoraaroB/react-security-performance-lab
 - The PR description lives in `docs/prs/NN-short-name.md`; the user pastes it as the GitHub PR body.
-- Side branches (`chore/*`, `fix/*`) have no plan step; their description lives in `docs/prs/<branch-name-with-dashes>.md`.
+- Side branches (`chore/*`, `fix/*`, `feat/*`) have no plan step; their description lives in `docs/prs/<branch-name-with-dashes>.md`.
 - **The user pushes, opens the PR, and merges.** Claude only creates the branch and commits locally. Never push, never merge into `main`.
 - Before starting a new step: `git switch main && git pull` so the branch starts from the merged `main`.
 - Commit messages follow Conventional Commits (`feat(express): ...`, `chore: ...`, `docs: ...`).
