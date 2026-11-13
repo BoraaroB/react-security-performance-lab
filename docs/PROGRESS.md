@@ -5,10 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 10c (`POST /api/auth/logout`, PR #22) and side PR `feat/mobile-auth` (PR #23)
-- **In review:** step 11 (`pr/11-csrf`): `lib/csrf` (Origin allowlist + signed double-submit token), `GET /api/auth/csrf`,
-  check on every unsafe web request, new required secret `CSRF_SECRET` (one PR, user's choice; no split)
-- **Next:** step 12 (`pr/12-rbac-posts`). Probably needs a split (roles/`authorize`, posts CRUD, admin routes): ask the user.
+- **Last merged:** 11 (CSRF, PR #24)
+- **In review:** step 12a (`pr/12a-rbac-admin-users`): `lib/rbac` (`createAuthorize({ getRole })` → `authorize(...roles)`),
+  `GET /api/admin/users` (admin only)
+- **Next:** step 12b (`pr/12b-posts`): posts store + repository, `GET /api/posts`, `POST /api/posts`.
 
 ## How to resume after `/clear`
 
@@ -45,7 +45,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 10b | Refresh cookie + `/refresh` | ✅ PR #21 | `__Secure-refresh_token` cookie on login/register, `POST /api/auth/refresh`, `cookie-parser`, `createApp({ users, refreshTokens })` |
 | 10c | Logout | ✅ PR #22 | `revoke(token)` in `lib/refresh-tokens`, `POST /api/auth/logout` → 204, cookie cleared |
 | – | Mobile auth | ✅ PR #23 (`feat/mobile-auth`) | `/api/mobile/auth/*`, refresh token in JSON, no CORS, `createAuthLimiters()` shared by web and mobile |
-| 11 | CSRF | 🔍 `pr/11-csrf` | `lib/csrf` (`createCsrfTokenService`, `createCsrfProtection` → `protect`, `issueToken`), `GET /api/auth/csrf`, `CSRF_SECRET` |
+| 11 | CSRF | ✅ PR #24 | `lib/csrf` (`createCsrfTokenService`, `createCsrfProtection` → `protect`, `issueToken`), `GET /api/auth/csrf`, `CSRF_SECRET` |
 
 ## Decisions (and why)
 
@@ -361,6 +361,21 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   rejects `null` even if a list contains it (found in review: a copied module could get "null" from an env var).
 - **`CSRF_SECRET` (step 11):** required, no default, ≥ 32 characters; `setup-env.mjs` generates 32 random bytes
   (base64url). Its own value (one key per purpose): config rejects `CSRF_SECRET === JWT_SECRET` (found in review). Shared `csrfTokens` instance in `security.ts`.
+- **Step 12 split (user's choice, 2026-11-13):** 12a = `lib/rbac` + `GET /admin/users`, 12b = posts list/create,
+  12c = `DELETE /posts/:id` with ownership, 12d = `PATCH /admin/users/:id/role`. One concept per PR.
+- **RBAC (step 12a):** `lib/rbac` = `core.ts` (`hasRole(role, allowedRoles)`: deny by default, exact match, no role
+  hierarchy; `RbacConfigError`) + `express.ts` (`createAuthorize({ getRole })` → `authorize(...roles)`), depends on
+  `lib/errors`. `getRole` is a parameter so the module does not depend on the app's `req.user` type (two global
+  declarations of `user` with different types would not compile). Glue: `getRole: (req) => req.user?.role`, the role
+  of the user loaded on this request, never a token claim. No roles → `RbacConfigError` at startup; no user on the
+  request (missing `requireUser`) → 500, fail closed and loud; wrong role → 403 `FORBIDDEN` "You do not have
+  permission to do this" (does not name the required role). `requireAdmin = [...requireUser, authorize('admin')]`
+  in `app.ts`.
+- **Admin routes (step 12a):** `createAdminRouter({ admin, requireAdmin })` at `/api/admin`: `Cache-Control: no-store`
+  first, then `router.use(requireAdmin)` for the whole router (a future admin route cannot forget it; an unknown
+  `/api/admin/*` path gives a non-admin 401/403, an admin 404). `GET /users` → `{ users }` in the public shape (no
+  `passwordHash`, even for admins), via `admin.service.ts` (`listUsers`) and `users.findAll()` (insertion order,
+  decrypts every name). Global limit only. The service does not check the role itself; the router does.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -387,9 +402,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - Shell commands (`cat .env`) are not covered by the `Read(...)` deny rules in `.claude/settings.json`; only Claude Code's
   built-in file tools are. Full coverage would need Claude Code's Bash sandbox (not enabled; the user decides).
 - **JSON limit vs post size (found in 05a review):** the 32 kb limit in `app.ts` assumes post content ≤ 10,000 characters.
-  Step 12 must keep that limit in its Zod schema, or raise the JSON limit; otherwise valid posts get 413 instead of `VALIDATION_ERROR`.
-- `Cache-Control: no-store` is set only on `/api/auth/*` (09a). Other routes with user data (posts, admin, step 12)
-  should get it too.
+  Step 12b must keep that limit in its Zod schema, or raise the JSON limit; otherwise valid posts get 413 instead of `VALIDATION_ERROR`.
+- `Cache-Control: no-store` is set on `/api/auth/*` (09a) and `/api/admin/*` (12a). The posts router (12b) needs it too.
+- **Admin user list is not paginated (12a review, low):** `GET /api/admin/users` returns every user and decrypts
+  every name on each call. Fine for the in-memory demo; a real store needs `limit` + a cursor (Zod-validated query).
 - **Key rotation (07a):** not supported. Changing `DATA_ENCRYPTION_KEY` makes all encrypted values unreadable (with an
   in-memory store that only matters within one run). The `v1.` prefix leaves room for a key ID later.
 - **Encrypted values are not searchable (07a):** a random IV means `encrypt(x)` differs every time, so lookups by an

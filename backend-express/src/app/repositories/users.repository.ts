@@ -89,6 +89,12 @@ export function createUsersRepository(store: Store, encryptor: Encryptor) {
 
     findById,
 
+    /** Every user, oldest first. Decrypts every name, so it is not cheap: admin pages only. */
+    findAll(): User[] {
+      const records = [...store.users.values()];
+      return records.map(toUser);
+    },
+
     findByEmail(email: string): User | undefined {
       const id = store.userIdsByEmail.get(normalizeEmail(email));
       return id === undefined ? undefined : findById(id);

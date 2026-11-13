@@ -5,17 +5,20 @@ import { errorHandler, notFoundHandler } from '../lib/errors/index.js';
 import { authenticate } from '../lib/jwt/index.js';
 import { createRequestLogger } from '../lib/logger/index.js';
 import { rateLimit } from '../lib/rate-limit/index.js';
+import { createAuthorize } from '../lib/rbac/index.js';
 import type { RefreshTokenService } from '../lib/refresh-tokens/index.js';
 import { corsPolicy, securityHeaders } from '../lib/security/index.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { loadCurrentUser } from './middleware/current-user.middleware.js';
 import type { UsersRepository } from './repositories/users.repository.js';
+import { createAdminRouter } from './routes/admin.routes.js';
 import { createAuthLimiters, createAuthRouter } from './routes/auth.routes.js';
 import { demoRouter } from './routes/demo.js';
 import { healthRouter } from './routes/health.js';
 import { createMobileAuthRouter } from './routes/mobile-auth.routes.js';
 import { accessTokens, csrfTokens, passwords } from './security.js';
+import { createAdminService } from './services/admin.service.js';
 import { createAuthService } from './services/auth.service.js';
 
 export interface AppDeps {
@@ -57,6 +60,11 @@ export function createApp({ users, refreshTokens }: AppDeps) {
   const checkToken = authenticate(accessTokens);
   const loadUser = loadCurrentUser(users);
   const requireUser = [checkToken, loadUser];
+  // The role comes from `req.user`, loaded from the store on this request (the token has no role), so a demoted
+  // admin loses access at once.
+  const authorize = createAuthorize({ getRole: (req) => req.user?.role });
+  const requireAdmin = [...requireUser, authorize('admin')];
+  const adminService = createAdminService({ users });
   const authLimiters = createAuthLimiters();
   // Same origin list as CORS: the browser origins we trust to call the API with cookies.
   const csrf = createCsrfProtection({ tokens: csrfTokens, allowedOrigins: config.corsOrigins });
@@ -109,6 +117,7 @@ export function createApp({ users, refreshTokens }: AppDeps) {
   const authRouter = createAuthRouter({ auth: authService, requireUser, limiters: authLimiters, issueCsrfToken: csrf.issueToken });
   // If this path changes, change the refresh cookie's Path in auth.controller.ts too, or browsers stop sending it.
   app.use('/api/auth', authRouter);
+  app.use('/api/admin', createAdminRouter({ admin: adminService, requireAdmin }));
   if (config.enableDemoRoutes) app.use('/api/demo', demoRouter);
 
   // Must come after all routes: 404 for anything unmatched, then one handler that turns every error into JSON.

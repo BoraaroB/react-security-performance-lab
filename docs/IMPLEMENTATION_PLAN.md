@@ -38,8 +38,11 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 10a | `pr/10a-refresh-tokens` | Opaque refresh tokens stored as SHA-256 hashes, rotation (each token works once), reuse detection (revokes the family), sliding + absolute expiry, in-memory store | `lib/refresh-tokens` | S2 | ✅ |
 | 10b | `pr/10b-refresh-cookie` | Refresh token in an httpOnly `SameSite=Strict` cookie on login/register, `POST /auth/refresh` | – | S2 | ✅ |
 | 10c | `pr/10c-logout` | `POST /auth/logout`: revoke the family, clear the cookie → 204 | `lib/refresh-tokens` (extended) | S2 | ✅ |
-| 11 | `pr/11-csrf` | Signed double-submit CSRF + `Origin` check, `GET /auth/csrf` | `lib/csrf` | S1 | 🔍 |
-| 12 | `pr/12-rbac-posts` | Roles (`user`/`admin`), `authorize(...)`, resource ownership, posts CRUD, admin routes | `lib/rbac` | S2 | ⬜ |
+| 11 | `pr/11-csrf` | Signed double-submit CSRF + `Origin` check, `GET /auth/csrf` | `lib/csrf` | S1 | ✅ |
+| 12a | `pr/12a-rbac-admin-users` | Roles (`user`/`admin`), `authorize(...)` (403 `FORBIDDEN`), role read from the user loaded per request, `GET /admin/users` | `lib/rbac` | S2 | 🔍 |
+| 12b | `pr/12b-posts` | Posts store + repository, `GET /posts`, `POST /posts` (content ≤ 10,000 characters, see the 32 kb JSON limit), `no-store` | – | S2, S3 | ⬜ |
+| 12c | `pr/12c-post-ownership` | `DELETE /posts/:id`: owner or admin (resource ownership, IDOR), 404 vs 403 | – | S2 | ⬜ |
+| 12d | `pr/12d-admin-role-change` | `PATCH /admin/users/:id/role`: admin changes a role (no self-demotion / keep at least one admin) | – | S2 | ⬜ |
 | 13 | `pr/13-oauth-github` | OAuth 2.0 Authorization Code + PKCE + `state` (optional, needs GitHub keys) | `lib/oauth` | S2 | ⬜ |
 
 ## Phase B: Frontend (`frontend`)
