@@ -43,8 +43,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 12b | `pr/12b-posts` | Posts store + repository, `GET /posts`, `POST /posts` (content ≤ 10,000 characters, see the 32 kb JSON limit), `no-store` | – | S2, S3 | ✅ |
 | 12c | `pr/12c-post-ownership` | `DELETE /posts/:id`: owner or admin (resource ownership, IDOR), 404 vs 403 | – | S2 | ✅ |
 | 12d | `pr/12d-admin-role-change` | `PATCH /admin/users/:id/role`: admin changes a role (no self-demotion / keep at least one admin) | – | S2 | ✅ |
-| 13a | `pr/13a-oauth-core` | OAuth 2.0 client core: Authorization Code + PKCE (S256) + `state`, code exchange; no routes | `lib/oauth` | S2 | 🔍 |
-| 13b | `pr/13b-oauth-github-start` | Optional `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` (routes off without them), `GET /auth/oauth/github` → redirect, `state` + verifier in an `HttpOnly; Secure; SameSite=Lax` cookie (Path = callback, ~10 min; `Strict` would break the return from GitHub) | – | S2 | ⬜ |
+| 13a | `pr/13a-oauth-core` | OAuth 2.0 client core: Authorization Code + PKCE (S256) + `state`, code exchange; no routes | `lib/oauth` | S2 | ✅ |
+| 13b | `pr/13b-oauth-github-start` | Optional `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` (routes off without them), `GET /auth/oauth/github` → redirect, `state` + verifier in an `HttpOnly; Secure; SameSite=Lax` cookie (Path = callback, ~10 min; `Strict` would break the return from GitHub) | – | S2 | 🔍 |
 | 13c | `pr/13c-oauth-github-callback` | Callback: Zod-validate the query (`code`, `state`, provider `error`), clear the cookie (success and failure), check `state`, exchange the code, read the GitHub user (`fetchGithubProfile` in `lib/oauth/providers/github.ts`), link by `provider + providerUserId` (never auto-link by email), accounts without a password, refresh cookie, redirect to the frontend (failures → login page with a stable error code, never a 500) | – | S2 | ⬜ |
 
 ## Phase B: Frontend (`frontend`)

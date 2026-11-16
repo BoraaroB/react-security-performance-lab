@@ -23,6 +23,9 @@ if (config.seedDemoAccounts) {
   else logger.info({ accounts: created }, 'Seeded demo accounts');
 }
 
+// Says why /api/auth/oauth/github answers 404, instead of leaving someone to guess.
+if (!config.github) logger.info('GitHub login is off: set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to turn it on');
+
 const app = createApp({ users, posts, refreshTokens });
 
 // Express 5 passes listen errors (e.g. EADDRINUSE: port already taken) to this callback instead of throwing them.

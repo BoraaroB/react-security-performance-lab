@@ -1,7 +1,9 @@
 import { Router, type RequestHandler } from 'express';
 import { rateLimit } from '../../lib/rate-limit/index.js';
 import { validate } from '../../lib/validation/index.js';
+import type { OAuthClient } from '../../lib/oauth/index.js';
 import { createAuthController } from '../controllers/auth.controller.js';
+import { createOAuthController } from '../controllers/oauth.controller.js';
 import { logger } from '../logger.js';
 import { loginSchema, registerSchema } from '../schemas/auth.schemas.js';
 import type { AuthService } from '../services/auth.service.js';
@@ -43,9 +45,11 @@ export interface AuthRouterDeps {
   limiters: AuthLimiters;
   /** `GET /csrf` handler: sets the CSRF cookie and returns the token (from `createCsrfProtection` in `app.ts`). */
   issueCsrfToken: RequestHandler;
+  /** undefined = GitHub login is off, and its routes are not registered (404). */
+  githubOAuth?: OAuthClient;
 }
 
-export function createAuthRouter({ auth, requireUser, limiters, issueCsrfToken }: AuthRouterDeps) {
+export function createAuthRouter({ auth, requireUser, limiters, issueCsrfToken, githubOAuth }: AuthRouterDeps) {
   const router = Router();
   const controller = createAuthController(auth);
 
@@ -69,6 +73,13 @@ export function createAuthRouter({ auth, requireUser, limiters, issueCsrfToken }
   router.post('/logout', controller.logout);
   // No strict limiter: the frontend calls /me on every page load, and only the global limit applies.
   router.get('/me', requireUser, controller.me);
+
+  if (githubOAuth) {
+    const oauthController = createOAuthController(githubOAuth);
+    // The browser navigates here (a link, not fetch) and is redirected to GitHub. Global limit only: it only creates
+    // random values. No `returnTo` parameter on purpose: a redirect target from the URL would be an open redirect.
+    router.get('/oauth/github', oauthController.startGithubLogin);
+  }
 
   return router;
 }

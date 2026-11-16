@@ -1,7 +1,8 @@
-// Glue: the app-wide encryptor, password hasher, access-token and CSRF-token services, configured from `config`. One instance each, shared by everyone.
+// Glue: the app-wide encryptor, password hasher, access-token, CSRF-token and OAuth services, configured from `config`. One instance each, shared by everyone.
 import { createEncryptor } from '../lib/crypto/index.js';
 import { createCsrfTokenService } from '../lib/csrf/index.js';
 import { createAccessTokenService } from '../lib/jwt/index.js';
+import { createOAuthClient, GITHUB_ENDPOINTS } from '../lib/oauth/index.js';
 import { createPasswordHasher } from '../lib/password/index.js';
 import { config } from './config.js';
 
@@ -19,3 +20,6 @@ export const accessTokens = createAccessTokenService({
 });
 
 export const csrfTokens = createCsrfTokenService({ secret: config.csrfSecret });
+
+// undefined when GitHub login is off. No scopes: GitHub's minimum (the public profile) is enough to know who logs in.
+export const githubOAuth = config.github ? createOAuthClient({ ...GITHUB_ENDPOINTS, ...config.github }) : undefined;
