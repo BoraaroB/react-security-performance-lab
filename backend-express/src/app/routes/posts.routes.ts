@@ -1,7 +1,7 @@
 import { Router, type RequestHandler } from 'express';
 import { validate } from '../../lib/validation/index.js';
 import { createPostsController } from '../controllers/posts.controller.js';
-import { createPostSchema } from '../schemas/posts.schemas.js';
+import { createPostSchema, postIdParamsSchema } from '../schemas/posts.schemas.js';
 import type { PostsService } from '../services/posts.service.js';
 
 export interface PostsRouterDeps {
@@ -24,8 +24,9 @@ export function createPostsRouter({ posts, requireUser }: PostsRouterDeps) {
   router.use(requireUser);
 
   router.get('/', controller.list);
-  // The CSRF check already ran in app.ts, before this router.
+  // The CSRF check (POST and DELETE) already ran in app.ts, before this router.
   router.post('/', validate({ body: createPostSchema }), controller.create);
+  router.delete('/:id', validate({ params: postIdParamsSchema }), controller.remove);
 
   return router;
 }

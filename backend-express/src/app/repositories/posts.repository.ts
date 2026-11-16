@@ -33,6 +33,16 @@ export function createPostsRepository(store: Store) {
       const newestFirst = oldestFirst.reverse();
       return newestFirst.map((post) => ({ ...post }));
     },
+
+    findById(id: string): Post | undefined {
+      const post = store.posts.get(id);
+      if (!post) return undefined;
+      return { ...post };
+    },
+
+    delete(id: string): void {
+      store.posts.delete(id);
+    },
   };
 }
 

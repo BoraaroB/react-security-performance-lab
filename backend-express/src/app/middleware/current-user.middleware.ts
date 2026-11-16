@@ -37,3 +37,12 @@ export function loadCurrentUser(users: Pick<UsersRepository, 'findById'>): Reque
     next();
   };
 }
+
+/**
+ * The logged-in user, for handlers behind `requireUser`. TypeScript cannot know that middleware ran before the
+ * handler, so `req.user` stays optional; this narrows it. Missing → a wiring bug: fail closed with a 500.
+ */
+export function getCurrentUser(req: { user?: PublicUser }): PublicUser {
+  if (!req.user) throw new Error('requireUser (loadCurrentUser) must run before this handler');
+  return req.user;
+}

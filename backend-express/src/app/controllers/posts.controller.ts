@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
-import type { CreatePostInput } from '../schemas/posts.schemas.js';
+import { getCurrentUser } from '../middleware/current-user.middleware.js';
+import type { CreatePostInput, PostIdParams } from '../schemas/posts.schemas.js';
 import type { PostsService } from '../services/posts.service.js';
 
 export function createPostsController(posts: PostsService) {
@@ -9,13 +10,16 @@ export function createPostsController(posts: PostsService) {
   };
 
   const create: RequestHandler<unknown, unknown, CreatePostInput, unknown> = (req, res) => {
-    // `requireUser` always sets `req.user` on this router. If it is missing, the wiring is broken:
-    // answer 500 and save nothing, instead of saving a post without an author.
-    if (!req.user) throw new Error('Posts routes must run after requireUser');
-
-    const post = posts.createPost(req.user, req.body);
+    const user = getCurrentUser(req);
+    const post = posts.createPost(user, req.body);
     res.status(201).json({ post });
   };
 
-  return { list, create };
+  const remove: RequestHandler<PostIdParams> = (req, res) => {
+    const user = getCurrentUser(req);
+    posts.deletePost(user, req.params.id);
+    res.status(204).end();
+  };
+
+  return { list, create, remove };
 }
