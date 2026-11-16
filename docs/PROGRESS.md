@@ -5,10 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 12d (admin role change, PR #28)
-- **In review:** step 13a (`pr/13a-oauth-core`): `lib/oauth` (PKCE + `state` + code exchange), no routes yet
-- **Next:** step 13b (`pr/13b-oauth-github-start`): GitHub config + `GET /api/auth/oauth/github` redirect.
-  The user creates the GitHub OAuth App and puts `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` in `.env` themselves.
+- **Last merged:** 13a (OAuth core, PR #29)
+- **In review:** step 13b (`pr/13b-oauth-github-start`): GitHub config + `GET /api/auth/oauth/github` (cookie + redirect)
+- **Next:** step 13c (`pr/13c-oauth-github-callback`): the callback (validate query, clear cookie, check `state`,
+  exchange the code, read the GitHub user, link/create the account, refresh cookie, redirect to the frontend).
 
 ## How to resume after `/clear`
 
@@ -50,7 +50,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 12b | Posts list + create | ✅ PR #26 | `PostRecord`, `posts.repository.ts`, `GET /api/posts`, `POST /api/posts`; second commit simplified the code for readability |
 | 12c | Post ownership | ✅ PR #27 | `DELETE /api/posts/:id` (owner or admin, 404 vs 403); second commit added `getCurrentUser(req)` |
 | 12d | Admin role change | ✅ PR #28 | `PATCH /api/admin/users/:id/role`, `CANNOT_CHANGE_OWN_ROLE`, caller re-checked before the write; second commit: `ROLES` const array |
-| 13a | OAuth core | 🔍 `pr/13a-oauth-core` | `lib/oauth` (`createOAuthClient` → `createAuthorizationRequest`, `exchangeCode`; `isSameState`) |
+| 13a | OAuth core | ✅ PR #29 | `lib/oauth` (`createOAuthClient` → `createAuthorizationRequest`, `exchangeCode`; `isSameState`) |
+| 13b | GitHub login start | 🔍 `pr/13b-oauth-github-start` | `API_ORIGIN`, `GITHUB_CLIENT_ID`/`SECRET`, `oauthClients` Map + `oauthCallbackPath()` in `security.ts`, generic `oauth.controller.ts`, `__Secure-oauth_<provider>` cookie; second commit: generic providers |
 
 ## Decisions (and why)
 
@@ -453,6 +454,29 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `None`), `Path` = the callback route, ~10 min, cleared by the callback on success AND failure. The callback
   validates its query with Zod (`code`, `state`, provider `error` such as `access_denied`) and answers every failure
   with a redirect to the frontend login page carrying a stable error code, never a 500.
+- **OAuth login start (step 13b):** `GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET` are optional but must be set
+  together (only one → startup fails); without them `config.oauth.github` is `undefined`, no client is created and
+  the route is not registered (404). A startup info line lists `oauthProviders`. No scopes yet (GitHub's minimum =
+  public profile); 13c adds `user:email` only if it needs the email. The route lives in the auth router (gets its
+  `no-store`), global limit only, no `returnTo` (open redirect). Cookie `__Secure-oauth_<provider>` =
+  `<state>.<verifier>` (both base64url, so `.` is a safe separator), `HttpOnly; Secure; SameSite=Lax;
+  Path=<callback path>; Max-Age=600`. The controller's `cookieOptions` are shared with the callback's `clearCookie`
+  (Express 5 ignores `maxAge` there). The cookie is not signed: an attacker who cannot write our cookies cannot
+  change it (same trust as the refresh cookie; see Known gaps).
+- **Generic OAuth providers (13b, second commit, user's request):** nothing in routes or the controller names GitHub.
+  `security.ts` holds `type OAuthProviderName = 'github'`, `oauthCallbackPath(provider)` (`/api/auth/oauth/<provider>/callback`,
+  the single source for the redirect URI and the cookie `Path`), and `oauthClients: Map<OAuthProviderName, OAuthClient>`
+  with only the configured providers. `createOAuthController(provider, client)` gives each provider its own cookie
+  (two logins with different providers do not overwrite each other) and path. The router registers one FIXED route per
+  entry (`/oauth/${provider}`), not `/oauth/:provider`: the URL name is never looked up, so unknown names and
+  `__proto__` are 404 (the fixed routes do that, not the Map). `GITHUB_REDIRECT_URI` (first commit) was replaced by
+  one `API_ORIGIN` (exact origin, `isExactOrigin`, default `http://localhost:<PORT>`, https required in production
+  when a provider is on): callback URLs are built from it, so a wrong path is impossible. Adding Google or Microsoft =
+  a file in `lib/oauth/providers`, a name in `OAuthProviderName`, `<NAME>_CLIENT_ID/SECRET` (+ both-or-neither and the
+  production `API_ORIGIN` check) in config, one `if` block in `security.ts`; each will be its own small step.
+  **Apple does not fit as is:** with name/email scopes it returns with a cross-site POST (`response_mode=form_post`),
+  so a `SameSite=Lax` cookie is not sent and the CSRF middleware blocks the POST, and its client secret is a
+  short-lived JWT signed with a private key. Apple would need its own step.
 - **Simpler code (user's request after 12b, applies to every step):** the code must be easy to read for someone who
   just opens the file. No helper functions for one call site (inline the `if`), named regexes instead of bare ones,
   short comments (the "why" in 1–2 lines; long explanations go to the PR description), one field per line in objects. No HTML stripping on input: text is stored as typed and escaped on output (React); DOMPurify
@@ -464,6 +488,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 - `backend-express/.env` exists locally (git-ignored). It needs `DATA_ENCRYPTION_KEY` (07a), `JWT_SECRET` (08) and `CSRF_SECRET` (11):
   run `node scripts/setup-env.mjs` (it fills empty secrets and keeps everything else).
+  For GitHub login (13b+), the user adds `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` from their own GitHub OAuth App.
 - Nothing else: `frontend/`, `backend-nest/`, and the root `package.json` were deleted on purpose.
   Each step creates its own files from scratch (frontend in step 14, Nest in step 26, root scripts in step 30).
 
@@ -532,6 +557,15 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Sibling subdomains can still set the refresh cookie (10b):** `__Secure-` stops plain-HTTP planting, but any HTTPS
   subdomain of the same site (e.g. a hacked `blog.example.com`) could still set a `Domain=example.com` cookie with the
   same name. Only `__Host-` (needs `Path=/`) or keeping untrusted subdomains off the site prevents that.
+- **Two logins with the same provider at once (13b):** each start overwrites that provider's one cookie, so finishing the
+  older login (e.g. in another tab) fails the `state` check and goes back to the login page. Safe; starting again works.
+- **The OAuth cookie can be planted from a sibling subdomain (13b review, low):** same as the refresh cookie: `__Secure-`
+  does not stop a hacked `*.example.com` from setting it. The attacker plants their own `state.verifier` and sends the
+  victim to the callback with their own `code`: login CSRF (the victim ends up in the attacker's account). Signing
+  would not help (our start route hands out valid values). `__Host-oauth_github` with `Path=/` would close it (sent
+  with every API request for 10 minutes); kept `__Secure-` + callback path as planned. **Rule for 13c:** the callback
+  must never link GitHub to an already logged-in account (it cannot anyway: the `SameSite=Strict` refresh cookie is not
+  sent on the navigation back from GitHub); otherwise this gap becomes account takeover.
 - **A failed refresh does not clear the cookie (10b):** a dead `refresh_token` cookie stays in the browser until it
   expires, the user logs in again, or logs out (10c clears it; harmless anyway: it is useless).
 - **No "log out everywhere" (10c):** logout ends only the current login. A password change or "log out of all devices"

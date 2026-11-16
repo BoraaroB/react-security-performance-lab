@@ -75,7 +75,20 @@ const envSchema = z.object({
   CSRF_SECRET: z
     .string({ error: 'required: run `node scripts/setup-env.mjs` to generate it' })
     .min(32, 'must be at least 32 characters; run `node scripts/setup-env.mjs` to generate one'),
+  // Optional: this API's public origin, as browsers and OAuth providers reach it (default: http://localhost:<PORT>).
+  // OAuth callback URLs are built from it, e.g. <API_ORIGIN>/api/auth/oauth/github/callback.
+  API_ORIGIN: z
+    .string()
+    .refine(isExactOrigin, 'must be an origin like https://api.example.com (no path, no trailing slash)')
+    .optional(),
+  // Optional, one pair per OAuth provider: a provider is on only when both are set (from its OAuth App settings).
+  GITHUB_CLIENT_ID: z.string().min(1).optional(),
+  GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
 }).superRefine((env, ctx) => {
+  // Only one of the two is almost certainly a typo: fail loudly instead of silently turning the provider off.
+  if (Boolean(env.GITHUB_CLIENT_ID) !== Boolean(env.GITHUB_CLIENT_SECRET)) {
+    ctx.addIssue({ code: 'custom', path: ['GITHUB_CLIENT_SECRET'], message: 'set both GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET, or neither' });
+  }
   // One key per purpose: a leak (or a weakness) in one use must not expose the other.
   if (env.CSRF_SECRET === env.JWT_SECRET) {
     ctx.addIssue({ code: 'custom', path: ['CSRF_SECRET'], message: 'must be different from JWT_SECRET' });
@@ -87,6 +100,11 @@ const envSchema = z.object({
     if (origin.startsWith('http:') && new URL(origin).hostname !== 'localhost') {
       ctx.addIssue({ code: 'custom', path: ['CORS_ORIGINS'], message: 'production allows only https origins' });
     }
+  }
+  // Without it, production would build OAuth callback URLs on localhost and send the providers' codes to the wrong
+  // place. (Each new provider's CLIENT_ID joins this check.)
+  if (env.GITHUB_CLIENT_ID && !env.API_ORIGIN?.startsWith('https://')) {
+    ctx.addIssue({ code: 'custom', path: ['API_ORIGIN'], message: 'production with OAuth login needs an https origin' });
   }
 });
 
@@ -110,6 +128,14 @@ function loadConfig() {
       dataEncryptionKey: env.DATA_ENCRYPTION_KEY,
       jwtSecret: env.JWT_SECRET,
       csrfSecret: env.CSRF_SECRET,
+      apiOrigin: env.API_ORIGIN ?? `http://localhost:${env.PORT}`,
+      // One entry per OAuth provider. undefined = off: its routes are not mounted at all (no half-working feature).
+      oauth: {
+        github:
+          env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
+            ? { clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET }
+            : undefined,
+      },
     } as const;
   } catch (error) {
     if (error instanceof EnvValidationError) {

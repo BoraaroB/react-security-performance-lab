@@ -19,7 +19,7 @@ import { demoRouter } from './routes/demo.js';
 import { healthRouter } from './routes/health.js';
 import { createMobileAuthRouter } from './routes/mobile-auth.routes.js';
 import { createPostsRouter } from './routes/posts.routes.js';
-import { accessTokens, csrfTokens, passwords } from './security.js';
+import { accessTokens, csrfTokens, oauthClients, passwords } from './security.js';
 import { createAdminService } from './services/admin.service.js';
 import { createAuthService } from './services/auth.service.js';
 import { createPostsService } from './services/posts.service.js';
@@ -119,8 +119,15 @@ export function createApp({ users, posts, refreshTokens }: AppDeps) {
   app.use(csrf.protect);
 
   app.use('/api/health', healthRouter);
-  const authRouter = createAuthRouter({ auth: authService, requireUser, limiters: authLimiters, issueCsrfToken: csrf.issueToken });
-  // If this path changes, change the refresh cookie's Path in auth.controller.ts too, or browsers stop sending it.
+  const authRouter = createAuthRouter({
+    auth: authService,
+    requireUser,
+    limiters: authLimiters,
+    issueCsrfToken: csrf.issueToken,
+    oauthClients,
+  });
+  // If this path changes, change the refresh cookie path in auth.controller.ts and `oauthCallbackPath` in
+  // security.ts too, or browsers stop sending the cookies.
   app.use('/api/auth', authRouter);
   app.use('/api/posts', createPostsRouter({ posts: postsService, requireUser }));
   app.use('/api/admin', createAdminRouter({ admin: adminService, requireAdmin }));
