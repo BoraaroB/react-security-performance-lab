@@ -1,6 +1,7 @@
 import { createApp } from './app/app.js';
 import { config } from './app/config.js';
 import { logger } from './app/logger.js';
+import { createPostsRepository } from './app/repositories/posts.repository.js';
 import { createUsersRepository } from './app/repositories/users.repository.js';
 import { encryptor, passwords } from './app/security.js';
 import { seedDemoAccounts } from './app/seed.js';
@@ -10,6 +11,7 @@ import { createMemoryRefreshTokenStore, createRefreshTokenService } from './lib/
 
 const store = createStore();
 const users = createUsersRepository(store, encryptor);
+const posts = createPostsRepository(store);
 // In memory, like the users: every session ends on restart. Defaults: 7 days per token, 30 days per login.
 const refreshTokenStore = createMemoryRefreshTokenStore();
 const refreshTokens = createRefreshTokenService({ store: refreshTokenStore });
@@ -21,7 +23,7 @@ if (config.seedDemoAccounts) {
   else logger.info({ accounts: created }, 'Seeded demo accounts');
 }
 
-const app = createApp({ users, refreshTokens });
+const app = createApp({ users, posts, refreshTokens });
 
 // Express 5 passes listen errors (e.g. EADDRINUSE: port already taken) to this callback instead of throwing them.
 const server = app.listen(config.port, (error) => {
