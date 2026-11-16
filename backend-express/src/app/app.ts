@@ -11,28 +11,32 @@ import { corsPolicy, securityHeaders } from '../lib/security/index.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { loadCurrentUser } from './middleware/current-user.middleware.js';
+import type { PostsRepository } from './repositories/posts.repository.js';
 import type { UsersRepository } from './repositories/users.repository.js';
 import { createAdminRouter } from './routes/admin.routes.js';
 import { createAuthLimiters, createAuthRouter } from './routes/auth.routes.js';
 import { demoRouter } from './routes/demo.js';
 import { healthRouter } from './routes/health.js';
 import { createMobileAuthRouter } from './routes/mobile-auth.routes.js';
+import { createPostsRouter } from './routes/posts.routes.js';
 import { accessTokens, csrfTokens, passwords } from './security.js';
 import { createAdminService } from './services/admin.service.js';
 import { createAuthService } from './services/auth.service.js';
+import { createPostsService } from './services/posts.service.js';
 
 export interface AppDeps {
   users: UsersRepository;
+  posts: PostsRepository;
   refreshTokens: RefreshTokenService;
 }
 
 /**
  * Builds the Express app without starting it, so tests can use the app without opening a port.
- * Everything that holds state (users, refresh tokens) comes in as a parameter (dependency injection), so a test can
+ * Everything that holds state (users, posts, refresh tokens) comes in as a parameter (dependency injection), so a test can
  * pass a fresh, empty store.
  * Middleware order matters.
  */
-export function createApp({ users, refreshTokens }: AppDeps) {
+export function createApp({ users, posts, refreshTokens }: AppDeps) {
   const app = express();
 
   // Don't advertise "X-Powered-By: Express"; it helps attackers pick known exploits.
@@ -65,6 +69,7 @@ export function createApp({ users, refreshTokens }: AppDeps) {
   const adminOnly = authorize({ allowedRoles: ['admin'], getRole: (req) => req.user?.role });
   const requireAdmin = [...requireUser, adminOnly];
   const adminService = createAdminService({ users });
+  const postsService = createPostsService({ posts, users });
   const authLimiters = createAuthLimiters();
   // Same origin list as CORS: the browser origins we trust to call the API with cookies.
   const csrf = createCsrfProtection({ tokens: csrfTokens, allowedOrigins: config.corsOrigins });
@@ -117,6 +122,7 @@ export function createApp({ users, refreshTokens }: AppDeps) {
   const authRouter = createAuthRouter({ auth: authService, requireUser, limiters: authLimiters, issueCsrfToken: csrf.issueToken });
   // If this path changes, change the refresh cookie's Path in auth.controller.ts too, or browsers stop sending it.
   app.use('/api/auth', authRouter);
+  app.use('/api/posts', createPostsRouter({ posts: postsService, requireUser }));
   app.use('/api/admin', createAdminRouter({ admin: adminService, requireAdmin }));
   if (config.enableDemoRoutes) app.use('/api/demo', demoRouter);
 

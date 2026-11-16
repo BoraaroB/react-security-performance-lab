@@ -11,18 +11,30 @@ export interface UserRecord {
   createdAt: string; // ISO 8601
 }
 
+/** A post row exactly as stored. Plain text: posts are shown to every logged-in user anyway. */
+export interface PostRecord {
+  id: string;
+  authorId: string; // always the logged-in user who created it, never a value from the request body
+  title: string;
+  content: string; // stored as the user typed it; the frontend escapes it when it shows it (XSS)
+  createdAt: string; // ISO 8601
+}
+
 export function createStore() {
   const users = new Map<string, UserRecord>();
   // A second Map as an index: finding a user by email is one lookup instead of a scan over all users.
   const userIdsByEmail = new Map<string, string>();
+  const posts = new Map<string, PostRecord>();
 
   return {
     users,
     userIdsByEmail,
+    posts,
     /** Empties everything (e.g. between tests). */
     reset() {
       users.clear();
       userIdsByEmail.clear();
+      posts.clear();
     },
   };
 }

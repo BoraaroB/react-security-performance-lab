@@ -5,10 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 11 (CSRF, PR #24)
-- **In review:** step 12a (`pr/12a-rbac-admin-users`): `lib/rbac` (`authorize({ allowedRoles, getRole })`),
-  `GET /api/admin/users` (admin only)
-- **Next:** step 12b (`pr/12b-posts`): posts store + repository, `GET /api/posts`, `POST /api/posts`.
+- **Last merged:** 12a (RBAC + admin user list, PR #25)
+- **In review:** step 12b (`pr/12b-posts`): posts store + repository, `GET /api/posts`, `POST /api/posts`
+- **Next:** step 12c (`pr/12c-post-ownership`): `DELETE /api/posts/:id`, owner or admin (IDOR), 404 vs 403.
 
 ## How to resume after `/clear`
 
@@ -46,6 +45,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 10c | Logout | ✅ PR #22 | `revoke(token)` in `lib/refresh-tokens`, `POST /api/auth/logout` → 204, cookie cleared |
 | – | Mobile auth | ✅ PR #23 (`feat/mobile-auth`) | `/api/mobile/auth/*`, refresh token in JSON, no CORS, `createAuthLimiters()` shared by web and mobile |
 | 11 | CSRF | ✅ PR #24 | `lib/csrf` (`createCsrfTokenService`, `createCsrfProtection` → `protect`, `issueToken`), `GET /api/auth/csrf`, `CSRF_SECRET` |
+| 12a | RBAC + admin users | ✅ PR #25 | `lib/rbac` (`hasRole`, `authorize({ allowedRoles, getRole })`), `GET /api/admin/users`, `requireAdmin` |
 
 ## Decisions (and why)
 
@@ -379,6 +379,20 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `/api/admin/*` path gives a non-admin 401/403, an admin 404). `GET /users` → `{ users }` in the public shape (no
   `passwordHash`, even for admins), via `admin.service.ts` (`listUsers`) and `users.findAll()` (insertion order,
   decrypts every name). Global limit only. The service does not check the role itself; the router does.
+- **Posts (step 12b):** `PostRecord` in `store.ts` (`id`, `authorId`, `title`, `content`, `createdAt`; plain text, not
+  encrypted: every logged-in user reads posts anyway), `posts.repository.ts` (`create`, `findAll` newest first; returns
+  copies), `posts.schemas.ts`, `posts.service.ts`, `posts.controller.ts`, `posts.routes.ts`; `createApp({ users, posts,
+  refreshTokens })`. Router at `/api/posts`: `no-store` first, then `requireUser` for the whole router (like admin).
+  `GET /` → `{ posts }` (every post of every user, newest first), `POST /` → 201 `{ post }`. CSRF from `app.ts`, global
+  limit only. Response shape `PublicPost` = `{ id, title, content, createdAt, author: { id, name } | null }`: no author
+  email (every user sees it; OWASP API3), `author.id` so the frontend can show "delete" on own posts (12c checks on the
+  server); `null` if the account is gone (no user deletion exists yet). The service looks up the author per post
+  (`users.findById`, decrypts the name each time). The author is `req.user.id`, never from the body.
+  Schema: title trimmed, NFC, 1–200, no `\p{Cc}`/`\p{Cf}` (one line, anti-spoofing, same regex as `name`); content
+  trimmed, 1–10,000 UTF-16 units (≤ 3 bytes each in UTF-8, so ≤ ~30 kb: fits the 32 kb JSON limit; tested with 10,000
+  CJK characters → 201), no control characters except `\n`, `\r`, `\t` (found in review). `\p{Cf}` is allowed in
+  content (emoji need the zero-width joiner), not in the title. No HTML stripping on input: text is stored as typed and escaped on output (React); DOMPurify
+  only where HTML must be rendered.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
@@ -404,9 +418,14 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - No automated tests yet; verification is typecheck + build + curl smoke tests + review agents → Phase E (steps 33–35).
 - Shell commands (`cat .env`) are not covered by the `Read(...)` deny rules in `.claude/settings.json`; only Claude Code's
   built-in file tools are. Full coverage would need Claude Code's Bash sandbox (not enabled; the user decides).
-- **JSON limit vs post size (found in 05a review):** the 32 kb limit in `app.ts` assumes post content ≤ 10,000 characters.
-  Step 12b must keep that limit in its Zod schema, or raise the JSON limit; otherwise valid posts get 413 instead of `VALIDATION_ERROR`.
-- `Cache-Control: no-store` is set on `/api/auth/*` (09a) and `/api/admin/*` (12a). The posts router (12b) needs it too.
+- **JSON limit vs post size (05a → handled in 12b):** content ≤ 10,000 UTF-16 units fits 32 kb for any normal text.
+  A body full of 6-byte JSON escapes (control characters as `\u00XX`, which the schema rejects anyway, or hand-escaped
+  letters like `A`) can still pass 32 kb and get 413 instead of `VALIDATION_ERROR`: the body limit runs before
+  validation. Rejected either way; normal text never does this. Accepted.
+- `Cache-Control: no-store` is set on `/api/auth/*` (09a), `/api/admin/*` (12a) and `/api/posts/*` (12b).
+- **Posts list is not paginated (12b):** `GET /api/posts` returns every post and decrypts each author's name once per
+  post. Same fix as the admin list: `limit` + a cursor. No per-user limit on creating posts either (global 300 / 15 min
+  only), so one user can fill the in-memory store; a real app would add a write limiter per user.
 - **Admin user list is not paginated (12a review, low):** `GET /api/admin/users` returns every user and decrypts
   every name on each call. Fine for the in-memory demo; a real store needs `limit` + a cursor (Zod-validated query).
 - **Key rotation (07a):** not supported. Changing `DATA_ENCRYPTION_KEY` makes all encrypted values unreadable (with an
