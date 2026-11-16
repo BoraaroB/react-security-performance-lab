@@ -13,6 +13,8 @@ the logged-in user. goal.md topics: "authentication and authorization", "API sec
   "Post not found"; not the author and not an admin → 403 `FORBIDDEN` (same message as `authorize`); else delete.
 - `backend-express/src/app/controllers/posts.controller.ts`: `remove` → 204 No Content.
 - `backend-express/src/app/routes/posts.routes.ts`: `DELETE /:id` with `validate({ params })`.
+- `backend-express/src/app/middleware/current-user.middleware.ts`: `getCurrentUser(req)` (second commit, see Review):
+  returns `req.user` or throws (500). Used by `create`, `remove` and `GET /api/auth/me` instead of a repeated `if`.
 
 **404 vs 403:** 404 when the post does not exist, 403 when it exists but is not yours. Returning 403 is fine here
 because every logged-in user already sees every post in `GET /api/posts`. For PRIVATE resources (e.g. someone else's
@@ -51,6 +53,13 @@ user (`req.user`, never a value from the request) → act. Put the check in the 
   no frontend yet. Now: "A UI may hide the delete button, but that is only UX."
 - **code-reviewer (nit) → fixed:** the "How to test" script let the admin delete their own post, so it did not show
   the admin rule on its own. It now covers owner → 204 and admin deleting someone else's post → 204.
+- **User's review → `getCurrentUser(req)` helper** (second commit, no behavior change): the same
+  `if (!req.user) throw ...` was in 3 handlers (posts `create`, `remove`, auth `me`), and 12d adds a fourth. Why the
+  check exists at all: `requireUser` already rejects anonymous requests, but Express types cannot tell a handler that
+  a middleware ran first, so `req.user` stays optional; the helper narrows the type and fails closed (500) on a wiring
+  bug. Not `req.user!`: that would silently pass `undefined` on. Other frameworks solve it in the type system (NestJS
+  guard + `@CurrentUser()`, tRPC `protectedProcedure`). Re-checked: typecheck, build, `/me` → 200 / no token → 401,
+  create → 201 with the author, delete → 204, `getCurrentUser({})` throws. Both reviewers on this commit: no findings.
 
 ## Interview questions
 1. **What is IDOR, and how is it prevented here?** An API that trusts an ID from the request without checking the

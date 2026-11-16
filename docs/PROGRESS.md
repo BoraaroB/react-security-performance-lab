@@ -264,7 +264,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `Express.Request` augmentation in the same file). The public shape on purpose: no `passwordHash` on the request, so
   `res.json(req.user)` or a log line cannot leak it. A missing user → 401 `UNAUTHORIZED` "Authentication required"
   + `WWW-Authenticate: Bearer` (same as a missing token; the frontend logs in again). No `req.auth` (wiring mistake) →
-  500, fail closed; the `me` handler also throws (500) if `req.user` is missing. `app.ts` builds
+  500, fail closed; the `me` handler also throws (500) if `req.user` is missing (since 12c via `getCurrentUser(req)`). `app.ts` builds
   `requireUser = [authenticate(accessTokens), loadCurrentUser(users)]` once and passes it to routers
   (`createAuthRouter({ auth, requireUser })`); step 12 passes the same chain to the posts and admin routers.
   `GET /api/auth/me` → `{ user }`, global limiter only (the frontend calls it on every page load), `no-store` from the router.
@@ -400,6 +400,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   uses `req.user`, never a value from the request. 403 (not 404) for "not yours" because every logged-in user already
   sees every post; private resources should answer 404. A plain `user.role === 'admin'` instead of `hasRole` from
   `lib/rbac`: one comparison, easier to read. CSRF from `app.ts`, global limit only, `no-store` from the router.
+- **`getCurrentUser(req)` (12c, user's review):** in `current-user.middleware.ts`. Handlers behind `requireUser`
+  call it instead of `if (!req.user) throw ...`: Express types cannot know a middleware ran first, so `req.user` stays
+  optional; the helper narrows it and throws (500, fail closed) on a wiring bug. Never `req.user!`. Used by posts
+  `create`/`remove` and auth `me`; every new handler that needs the user (12d) uses it too.
 - **Simpler code (user's request after 12b, applies to every step):** the code must be easy to read for someone who
   just opens the file. No helper functions for one call site (inline the `if`), named regexes instead of bare ones,
   short comments (the "why" in 1–2 lines; long explanations go to the PR description), one field per line in objects. No HTML stripping on input: text is stored as typed and escaped on output (React); DOMPurify
