@@ -3,7 +3,7 @@ import { config } from './app/config.js';
 import { logger } from './app/logger.js';
 import { createPostsRepository } from './app/repositories/posts.repository.js';
 import { createUsersRepository } from './app/repositories/users.repository.js';
-import { encryptor, passwords } from './app/security.js';
+import { encryptor, oauthClients, passwords } from './app/security.js';
 import { seedDemoAccounts } from './app/seed.js';
 import { createStore } from './app/store.js';
 import { registerGracefulShutdown } from './lib/graceful-shutdown/index.js';
@@ -23,8 +23,9 @@ if (config.seedDemoAccounts) {
   else logger.info({ accounts: created }, 'Seeded demo accounts');
 }
 
-// Says why /api/auth/oauth/github answers 404, instead of leaving someone to guess.
-if (!config.github) logger.info('GitHub login is off: set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to turn it on');
+// Says which "Log in with ..." routes exist, so a 404 on another provider is not a mystery.
+const oauthProviders = [...oauthClients.keys()];
+logger.info({ oauthProviders }, 'OAuth providers (turn one on with <NAME>_CLIENT_ID and <NAME>_CLIENT_SECRET)');
 
 const app = createApp({ users, posts, refreshTokens });
 

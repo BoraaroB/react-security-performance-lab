@@ -6,6 +6,7 @@ import { createAuthController } from '../controllers/auth.controller.js';
 import { createOAuthController } from '../controllers/oauth.controller.js';
 import { logger } from '../logger.js';
 import { loginSchema, registerSchema } from '../schemas/auth.schemas.js';
+import type { OAuthProviderName } from '../security.js';
 import type { AuthService } from '../services/auth.service.js';
 
 /**
@@ -45,11 +46,11 @@ export interface AuthRouterDeps {
   limiters: AuthLimiters;
   /** `GET /csrf` handler: sets the CSRF cookie and returns the token (from `createCsrfProtection` in `app.ts`). */
   issueCsrfToken: RequestHandler;
-  /** undefined = GitHub login is off, and its routes are not registered (404). */
-  githubOAuth?: OAuthClient;
+  /** Only the configured OAuth providers; the others get no routes (404). */
+  oauthClients: Map<OAuthProviderName, OAuthClient>;
 }
 
-export function createAuthRouter({ auth, requireUser, limiters, issueCsrfToken, githubOAuth }: AuthRouterDeps) {
+export function createAuthRouter({ auth, requireUser, limiters, issueCsrfToken, oauthClients }: AuthRouterDeps) {
   const router = Router();
   const controller = createAuthController(auth);
 
@@ -74,11 +75,12 @@ export function createAuthRouter({ auth, requireUser, limiters, issueCsrfToken, 
   // No strict limiter: the frontend calls /me on every page load, and only the global limit applies.
   router.get('/me', requireUser, controller.me);
 
-  if (githubOAuth) {
-    const oauthController = createOAuthController(githubOAuth);
-    // The browser navigates here (a link, not fetch) and is redirected to GitHub. Global limit only: it only creates
-    // random values. No `returnTo` parameter on purpose: a redirect target from the URL would be an open redirect.
-    router.get('/oauth/github', oauthController.startGithubLogin);
+  // One fixed route per configured provider, not `/oauth/:provider`: the name in the URL is never looked up, so an
+  // unknown provider is simply 404. The browser navigates here (a link, not fetch) and is redirected to the provider.
+  // Global limit only: it only creates random values. No `returnTo` parameter: it would be an open redirect.
+  for (const [provider, client] of oauthClients) {
+    const oauthController = createOAuthController(provider, client);
+    router.get(`/oauth/${provider}`, oauthController.start);
   }
 
   return router;

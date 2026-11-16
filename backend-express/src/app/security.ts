@@ -2,7 +2,7 @@
 import { createEncryptor } from '../lib/crypto/index.js';
 import { createCsrfTokenService } from '../lib/csrf/index.js';
 import { createAccessTokenService } from '../lib/jwt/index.js';
-import { createOAuthClient, GITHUB_ENDPOINTS } from '../lib/oauth/index.js';
+import { createOAuthClient, GITHUB_ENDPOINTS, type OAuthClient } from '../lib/oauth/index.js';
 import { createPasswordHasher } from '../lib/password/index.js';
 import { config } from './config.js';
 
@@ -21,5 +21,27 @@ export const accessTokens = createAccessTokenService({
 
 export const csrfTokens = createCsrfTokenService({ secret: config.csrfSecret });
 
-// undefined when GitHub login is off. No scopes: GitHub's minimum (the public profile) is enough to know who logs in.
-export const githubOAuth = config.github ? createOAuthClient({ ...GITHUB_ENDPOINTS, ...config.github }) : undefined;
+// Every supported OAuth provider. Adding one: its endpoints in lib/oauth/providers, its name here, its
+// <NAME>_CLIENT_ID/SECRET in config.ts (plus its both-or-neither and production API_ORIGIN checks there), and a
+// block below. Routes and cookies follow from the name.
+export type OAuthProviderName = 'github';
+
+/** Where a provider sends the browser back. Both the redirect URI and the state cookie's Path are built from it. */
+export function oauthCallbackPath(provider: OAuthProviderName) {
+  // Must match where app.ts mounts the auth router and the callback route in auth.routes.ts.
+  return `/api/auth/oauth/${provider}/callback`;
+}
+
+// Only the configured providers. auth.routes.ts loops over it to register one fixed route each; it is never looked
+// up with a name from the request.
+export const oauthClients = new Map<OAuthProviderName, OAuthClient>();
+
+if (config.oauth.github) {
+  // No scopes: GitHub's minimum (the public profile) is enough to know who logs in.
+  const github = createOAuthClient({
+    ...GITHUB_ENDPOINTS,
+    ...config.oauth.github,
+    redirectUri: `${config.apiOrigin}${oauthCallbackPath('github')}`,
+  });
+  oauthClients.set('github', github);
+}

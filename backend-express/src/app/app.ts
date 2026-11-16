@@ -19,7 +19,7 @@ import { demoRouter } from './routes/demo.js';
 import { healthRouter } from './routes/health.js';
 import { createMobileAuthRouter } from './routes/mobile-auth.routes.js';
 import { createPostsRouter } from './routes/posts.routes.js';
-import { accessTokens, csrfTokens, githubOAuth, passwords } from './security.js';
+import { accessTokens, csrfTokens, oauthClients, passwords } from './security.js';
 import { createAdminService } from './services/admin.service.js';
 import { createAuthService } from './services/auth.service.js';
 import { createPostsService } from './services/posts.service.js';
@@ -124,10 +124,10 @@ export function createApp({ users, posts, refreshTokens }: AppDeps) {
     requireUser,
     limiters: authLimiters,
     issueCsrfToken: csrf.issueToken,
-    githubOAuth,
+    oauthClients,
   });
-  // If this path changes, change the cookie paths in auth.controller.ts and oauth.controller.ts too, or browsers stop
-  // sending the cookies.
+  // If this path changes, change the refresh cookie path in auth.controller.ts and `oauthCallbackPath` in
+  // security.ts too, or browsers stop sending the cookies.
   app.use('/api/auth', authRouter);
   app.use('/api/posts', createPostsRouter({ posts: postsService, requireUser }));
   app.use('/api/admin', createAdminRouter({ admin: adminService, requireAdmin }));
