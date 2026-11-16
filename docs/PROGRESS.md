@@ -5,10 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 12c (post ownership, PR #27)
-- **In review:** step 12d (`pr/12d-admin-role-change`): `PATCH /api/admin/users/:id/role` (no self-demotion, keep at least one admin)
-- **Next:** step 13 (`pr/13-oauth-github`): OAuth 2.0 Authorization Code + PKCE + `state` (optional, needs GitHub keys).
-  Ask the user first whether to do it, and how to split it (it is bigger than ~150 lines).
+- **Last merged:** 12d (admin role change, PR #28)
+- **In review:** step 13a (`pr/13a-oauth-core`): `lib/oauth` (PKCE + `state` + code exchange), no routes yet
+- **Next:** step 13b (`pr/13b-oauth-github-start`): GitHub config + `GET /api/auth/oauth/github` redirect.
+  The user creates the GitHub OAuth App and puts `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` in `.env` themselves.
 
 ## How to resume after `/clear`
 
@@ -49,6 +49,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 12a | RBAC + admin users | ✅ PR #25 | `lib/rbac` (`hasRole`, `authorize({ allowedRoles, getRole })`), `GET /api/admin/users`, `requireAdmin` |
 | 12b | Posts list + create | ✅ PR #26 | `PostRecord`, `posts.repository.ts`, `GET /api/posts`, `POST /api/posts`; second commit simplified the code for readability |
 | 12c | Post ownership | ✅ PR #27 | `DELETE /api/posts/:id` (owner or admin, 404 vs 403); second commit added `getCurrentUser(req)` |
+| 12d | Admin role change | ✅ PR #28 | `PATCH /api/admin/users/:id/role`, `CANNOT_CHANGE_OWN_ROLE`, caller re-checked before the write; second commit: `ROLES` const array |
+| 13a | OAuth core | 🔍 `pr/13a-oauth-core` | `lib/oauth` (`createOAuthClient` → `createAuthorizationRequest`, `exchangeCode`; `isSameState`) |
 
 ## Decisions (and why)
 
@@ -423,6 +425,34 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   line "User role changed" `{ adminId, userId, from, to }` via `req.log` (the first handler log line in the app; IDs
   only; `from === to` marks a no-op). CSRF from `app.ts`, `requireAdmin` + `no-store` from the admin router, global
   limit only.
+- **Step 13 split (user's choice, 2026-11-16):** 13a = `lib/oauth` core, 13b = config + redirect to GitHub,
+  13c = callback + GitHub identity storage (one PR; ~200 lines expected, accepted by the user). The user creates the
+  GitHub OAuth App (callback `http://localhost:4000/api/auth/oauth/github/callback`) and fills `.env` themselves.
+- **One file per provider (13a, second commit, user's review):** `lib/oauth/providers/github.ts` holds
+  `GITHUB_ENDPOINTS` (spread into `createOAuthClient`). Everything provider-specific goes there (13c adds
+  `fetchGithubProfile` → a shared `OAuthProfile` `{ provider, providerUserId, email, name }` type in `core.ts`);
+  `core.ts` is never copied per provider (security fixes in one place). Glue keeps only `clientId`, `clientSecret`,
+  `redirectUri`. Accounts are linked by `provider + providerUserId` (never by email; see nOAuth for Microsoft), so
+  Google/Microsoft later = one provider file + config + a value in the provider enum.
+- **OAuth core (step 13a):** `lib/oauth/core.ts`, provider-agnostic (provider URLs in `providers/`), depends on
+  `zod` and global `fetch`, no adapter (no framework code). `createAuthorizationRequest()` → `{ url, state,
+  codeVerifier }`: `state` and verifier are 32 random bytes in base64url (43 characters), challenge =
+  base64url(SHA-256(verifier)), method `S256` only (never `plain`). `scope` is left out when `scopes` is empty.
+  `exchangeCode(code, verifier)` → `{ accessToken, scope }`: form-encoded POST with `Accept: application/json`
+  (GitHub otherwise answers form-encoded), `redirect: 'error'` (the client secret never follows a redirect),
+  `AbortSignal.timeout` (default 10 s). The body is checked for `{ error }` FIRST (GitHub answers errors with 200),
+  then Zod + `token_type === 'bearer'`. Every failure is `OAuthError` `OAUTH_FAILED`; `providerError` holds the
+  provider's code (e.g. `bad_verification_code`) and `cause` the network error, both for the log;
+  `error_description` is ignored. `isSameState` compares in constant time and never throws. All three URLs must be
+  https or `http://localhost`, and `timeoutMs` a positive integer (checked at startup, `OAuthConfigError`). The
+  provider's access token is used only to read the profile (13c), never sent to the browser.
+  What PKCE stops here (found in review): a client with a secret is not open to direct code theft, but to **code
+  injection** (a stolen code pasted into OUR callback from the attacker's browser); the attacker's verifier differs.
+- **Rules for 13b/13c (from the 13a review):** the `state` + verifier cookie is `HttpOnly; Secure; SameSite=Lax`
+  (not `Strict`: the return from GitHub is a navigation started on github.com, so a `Strict` cookie is not sent; never
+  `None`), `Path` = the callback route, ~10 min, cleared by the callback on success AND failure. The callback
+  validates its query with Zod (`code`, `state`, provider `error` such as `access_denied`) and answers every failure
+  with a redirect to the frontend login page carrying a stable error code, never a 500.
 - **Simpler code (user's request after 12b, applies to every step):** the code must be easy to read for someone who
   just opens the file. No helper functions for one call site (inline the `if`), named regexes instead of bare ones,
   short comments (the "why" in 1–2 lines; long explanations go to the PR description), one field per line in objects. No HTML stripping on input: text is stored as typed and escaped on output (React); DOMPurify
