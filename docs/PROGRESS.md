@@ -428,7 +428,13 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Step 13 split (user's choice, 2026-11-16):** 13a = `lib/oauth` core, 13b = config + redirect to GitHub,
   13c = callback + GitHub identity storage (one PR; ~200 lines expected, accepted by the user). The user creates the
   GitHub OAuth App (callback `http://localhost:4000/api/auth/oauth/github/callback`) and fills `.env` themselves.
-- **OAuth core (step 13a):** `lib/oauth/core.ts`, provider-agnostic (GitHub URLs come from glue in 13b), depends on
+- **One file per provider (13a, second commit, user's review):** `lib/oauth/providers/github.ts` holds
+  `GITHUB_ENDPOINTS` (spread into `createOAuthClient`). Everything provider-specific goes there (13c adds
+  `fetchGithubProfile` → a shared `OAuthProfile` `{ provider, providerUserId, email, name }` type in `core.ts`);
+  `core.ts` is never copied per provider (security fixes in one place). Glue keeps only `clientId`, `clientSecret`,
+  `redirectUri`. Accounts are linked by `provider + providerUserId` (never by email; see nOAuth for Microsoft), so
+  Google/Microsoft later = one provider file + config + a value in the provider enum.
+- **OAuth core (step 13a):** `lib/oauth/core.ts`, provider-agnostic (provider URLs in `providers/`), depends on
   `zod` and global `fetch`, no adapter (no framework code). `createAuthorizationRequest()` → `{ url, state,
   codeVerifier }`: `state` and verifier are 32 random bytes in base64url (43 characters), challenge =
   base64url(SHA-256(verifier)), method `S256` only (never `plain`). `scope` is left out when `scopes` is empty.

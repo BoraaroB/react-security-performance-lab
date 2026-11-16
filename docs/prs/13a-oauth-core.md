@@ -19,6 +19,9 @@ authorization" (OAuth).
   (`{ url, state, codeVerifier }`) and `exchangeCode(code, codeVerifier)` (`{ accessToken, scope }`);
   `isSameState(expected, received)` (constant time, never throws); `OAuthConfigError`, `OAuthError` (`OAUTH_FAILED`,
   `providerError` and `cause` for the log).
+- `backend-express/src/lib/oauth/providers/github.ts` (new, second commit, user's review): `GITHUB_ENDPOINTS`.
+  Everything provider-specific goes into one file per provider; `core.ts` stays shared, so the security logic is
+  written once. A new provider (Google, Microsoft) = one new file in `providers/`.
 - `backend-express/src/lib/oauth/index.ts`, `README.md` (new): public API and usage.
 
 Safety details in `exchangeCode`: URLs must be https (except `http://localhost`) and `timeoutMs` a positive integer,
@@ -30,9 +33,8 @@ the response is checked with Zod and `token_type` must be `bearer`.
 No route uses it yet (13b adds `GET /api/auth/oauth/github`). Quick check in `backend-express`:
 ```bash
 cat > oauth-try.mts <<'EOF'
-import { createOAuthClient } from './src/lib/oauth/index.js';
-const github = createOAuthClient({ authorizeUrl: 'https://github.com/login/oauth/authorize',
-  tokenUrl: 'https://github.com/login/oauth/access_token', clientId: 'x', clientSecret: 'y',
+import { createOAuthClient, GITHUB_ENDPOINTS } from './src/lib/oauth/index.js';
+const github = createOAuthClient({ ...GITHUB_ENDPOINTS, clientId: 'x', clientSecret: 'y',
   redirectUri: 'http://localhost:4000/api/auth/oauth/github/callback', scopes: ['read:user'] });
 console.log(github.createAuthorizationRequest());
 EOF
@@ -43,7 +45,7 @@ Expected: a GitHub URL with `state`, `code_challenge`, `code_challenge_method=S2
 ## How to reuse in another project
 Copy `src/lib/oauth/`, `npm i zod`. See the README for a full example:
 ```ts
-const github = createOAuthClient({ authorizeUrl, tokenUrl, clientId, clientSecret, redirectUri, scopes: ['read:user'] });
+const github = createOAuthClient({ ...GITHUB_ENDPOINTS, clientId, clientSecret, redirectUri, scopes: ['read:user'] });
 const { url, state, codeVerifier } = github.createAuthorizationRequest(); // save state + verifier, redirect to url
 if (!isSameState(savedState, req.query.state)) throw new Error('state mismatch');
 const { accessToken } = await github.exchangeCode(code, savedVerifier);

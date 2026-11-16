@@ -10,3 +10,4 @@ export {
   type OAuthClientOptions,
   type OAuthTokens,
 } from './core.js';
+export { GITHUB_ENDPOINTS } from './providers/github.js';

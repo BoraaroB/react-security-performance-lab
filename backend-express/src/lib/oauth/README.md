@@ -11,11 +11,10 @@ stolen authorization code works only together with the verifier of the login tha
 ## Usage
 
 ```ts
-import { createOAuthClient, isSameState, OAuthError } from './lib/oauth/index.js';
+import { createOAuthClient, GITHUB_ENDPOINTS, isSameState, OAuthError } from './lib/oauth/index.js';
 
 const github = createOAuthClient({
-  authorizeUrl: 'https://github.com/login/oauth/authorize',
-  tokenUrl: 'https://github.com/login/oauth/access_token',
+  ...GITHUB_ENDPOINTS,
   clientId: process.env.GITHUB_CLIENT_ID!,
   clientSecret: process.env.GITHUB_CLIENT_SECRET!,
   redirectUri: 'http://localhost:4000/api/auth/oauth/github/callback',
@@ -50,6 +49,17 @@ try {
 | `redirectUri` | `string` | – | Our callback, exactly as registered at the provider; https (or `http://localhost`) |
 | `scopes` | `string[]` | `[]` | Ask for the minimum you need |
 | `timeoutMs` | `number` | `10000` | Timeout for the code exchange; a positive integer |
+
+## Providers
+`core.ts` is the same for every provider (all security logic lives there, written and reviewed once). Each provider
+gets one small file in `providers/` with only what differs: its endpoints (and, later, reading its user profile).
+To add Google, create `providers/google.ts`:
+```ts
+export const GOOGLE_ENDPOINTS = {
+  authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+  tokenUrl: 'https://oauth2.googleapis.com/token',
+};
+```
 
 ## Notes
 - **PKCE (S256):** the login URL carries only `SHA-256(verifier)`. The verifier never appears in a URL: it stays in
