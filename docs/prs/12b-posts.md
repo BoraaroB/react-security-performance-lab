@@ -16,7 +16,7 @@ encoding in React), not by changing input. Deleting with an ownership check come
 - `backend-express/src/app/services/posts.service.ts`: `listPosts`, `createPost(author, input)` → `PublicPost`
   `{ id, title, content, createdAt, author: { id, name } | null }`.
 - `backend-express/src/app/controllers/posts.controller.ts`: `list` → `{ posts }`, `create` → 201 `{ post }`;
-  no `req.user` (wiring mistake) → 500.
+  no `req.user` (wiring mistake) → 500, checked with one `if` inside `create`.
 - `backend-express/src/app/routes/posts.routes.ts`: `no-store`, then `requireUser` for the whole router, then the routes.
 - `backend-express/src/app/app.ts`, `src/index.ts`: `createApp({ users, posts, refreshTokens })`, router at `/api/posts`.
 
@@ -54,6 +54,9 @@ Nothing new in `src/lib/`: this is app code. The pattern to copy is routes → c
   joiner; the title still rejects them (anti-spoofing). Note: JSON encodes a control character as `\u00XX` (6 bytes),
   so a body with more than ~5,400 of them is still over 32 kb and gets 413 before validation runs. Either way it is
   rejected, and normal text never contains them. Accepted.
+- **User's review → simplified for readability** (second commit, no behavior change): the `currentUser()` helper is
+  now one `if` inside `create`; the regexes have names (`NO_CONTROL_CHARACTERS_EXCEPT_LINE_BREAKS`); shorter comments;
+  `toPublicPost` lists each field on its own line. Typecheck, build and the smoke test were run again: same results.
 
 ## Interview questions
 1. **Why not strip HTML from posts on the server?** XSS depends on where text is shown (HTML, attribute, URL, JS). The safe

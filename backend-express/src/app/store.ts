@@ -11,12 +11,12 @@ export interface UserRecord {
   createdAt: string; // ISO 8601
 }
 
-/** A post row exactly as stored. Plain text: posts are shown to every logged-in user anyway. */
+/** A post row exactly as stored. Not encrypted: every logged-in user can read posts anyway. */
 export interface PostRecord {
   id: string;
-  authorId: string; // always the logged-in user who created it, never a value from the request body
+  authorId: string; // the logged-in user who created it
   title: string;
-  content: string; // stored as the user typed it; the frontend escapes it when it shows it (XSS)
+  content: string; // as the user typed it; the frontend escapes it when it shows it (XSS)
   createdAt: string; // ISO 8601
 }
 

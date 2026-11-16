@@ -391,7 +391,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   Schema: title trimmed, NFC, 1–200, no `\p{Cc}`/`\p{Cf}` (one line, anti-spoofing, same regex as `name`); content
   trimmed, 1–10,000 UTF-16 units (≤ 3 bytes each in UTF-8, so ≤ ~30 kb: fits the 32 kb JSON limit; tested with 10,000
   CJK characters → 201), no control characters except `\n`, `\r`, `\t` (found in review). `\p{Cf}` is allowed in
-  content (emoji need the zero-width joiner), not in the title. No HTML stripping on input: text is stored as typed and escaped on output (React); DOMPurify
+  content (emoji need the zero-width joiner), not in the title.
+- **Simpler code (user's request after 12b, applies to every step):** the code must be easy to read for someone who
+  just opens the file. No helper functions for one call site (inline the `if`), named regexes instead of bare ones,
+  short comments (the "why" in 1–2 lines; long explanations go to the PR description), one field per line in objects. No HTML stripping on input: text is stored as typed and escaped on output (React); DOMPurify
   only where HTML must be rendered.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
