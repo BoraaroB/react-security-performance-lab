@@ -3,7 +3,7 @@ import { config } from './app/config.js';
 import { logger } from './app/logger.js';
 import { createPostsRepository } from './app/repositories/posts.repository.js';
 import { createUsersRepository } from './app/repositories/users.repository.js';
-import { encryptor, oauthClients, passwords } from './app/security.js';
+import { encryptor, oauthProviders, passwords } from './app/security.js';
 import { seedDemoAccounts } from './app/seed.js';
 import { createStore } from './app/store.js';
 import { registerGracefulShutdown } from './lib/graceful-shutdown/index.js';
@@ -24,8 +24,8 @@ if (config.seedDemoAccounts) {
 }
 
 // Says which "Log in with ..." routes exist, so a 404 on another provider is not a mystery.
-const oauthProviders = [...oauthClients.keys()];
-logger.info({ oauthProviders }, 'OAuth providers (turn one on with <NAME>_CLIENT_ID and <NAME>_CLIENT_SECRET)');
+const providerNames = [...oauthProviders.keys()];
+logger.info({ oauthProviders: providerNames }, 'OAuth providers (turn one on with <NAME>_CLIENT_ID and <NAME>_CLIENT_SECRET)');
 
 const app = createApp({ users, posts, refreshTokens });
 

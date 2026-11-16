@@ -81,6 +81,12 @@ const envSchema = z.object({
     .string()
     .refine(isExactOrigin, 'must be an origin like https://api.example.com (no path, no trailing slash)')
     .optional(),
+  // Optional: the frontend's origin. After "Log in with GitHub", the callback sends the browser back there
+  // (default: http://localhost:5173).
+  FRONTEND_ORIGIN: z
+    .string()
+    .refine(isExactOrigin, 'must be an origin like https://app.example.com (no path, no trailing slash)')
+    .optional(),
   // Optional, one pair per OAuth provider: a provider is on only when both are set (from its OAuth App settings).
   GITHUB_CLIENT_ID: z.string().min(1).optional(),
   GITHUB_CLIENT_SECRET: z.string().min(1).optional(),
@@ -101,10 +107,13 @@ const envSchema = z.object({
       ctx.addIssue({ code: 'custom', path: ['CORS_ORIGINS'], message: 'production allows only https origins' });
     }
   }
-  // Without it, production would build OAuth callback URLs on localhost and send the providers' codes to the wrong
-  // place. (Each new provider's CLIENT_ID joins this check.)
+  // Without them, production would use the localhost defaults: the providers' codes and our users would be sent to
+  // the wrong place. (Each new provider's CLIENT_ID joins this check.)
   if (env.GITHUB_CLIENT_ID && !env.API_ORIGIN?.startsWith('https://')) {
     ctx.addIssue({ code: 'custom', path: ['API_ORIGIN'], message: 'production with OAuth login needs an https origin' });
+  }
+  if (env.GITHUB_CLIENT_ID && !env.FRONTEND_ORIGIN?.startsWith('https://')) {
+    ctx.addIssue({ code: 'custom', path: ['FRONTEND_ORIGIN'], message: 'production with OAuth login needs an https origin' });
   }
 });
 
@@ -129,6 +138,7 @@ function loadConfig() {
       jwtSecret: env.JWT_SECRET,
       csrfSecret: env.CSRF_SECRET,
       apiOrigin: env.API_ORIGIN ?? `http://localhost:${env.PORT}`,
+      frontendOrigin: env.FRONTEND_ORIGIN ?? 'http://localhost:5173',
       // One entry per OAuth provider. undefined = off: its routes are not mounted at all (no half-working feature).
       oauth: {
         github:

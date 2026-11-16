@@ -1,12 +1,11 @@
 import { Router, type RequestHandler } from 'express';
 import { rateLimit } from '../../lib/rate-limit/index.js';
 import { validate } from '../../lib/validation/index.js';
-import type { OAuthClient } from '../../lib/oauth/index.js';
 import { createAuthController } from '../controllers/auth.controller.js';
 import { createOAuthController } from '../controllers/oauth.controller.js';
 import { logger } from '../logger.js';
 import { loginSchema, registerSchema } from '../schemas/auth.schemas.js';
-import type { OAuthProviderName } from '../security.js';
+import type { OAuthProvider, OAuthProviderName } from '../security.js';
 import type { AuthService } from '../services/auth.service.js';
 
 /**
@@ -47,10 +46,10 @@ export interface AuthRouterDeps {
   /** `GET /csrf` handler: sets the CSRF cookie and returns the token (from `createCsrfProtection` in `app.ts`). */
   issueCsrfToken: RequestHandler;
   /** Only the configured OAuth providers; the others get no routes (404). */
-  oauthClients: Map<OAuthProviderName, OAuthClient>;
+  oauthProviders: Map<OAuthProviderName, OAuthProvider>;
 }
 
-export function createAuthRouter({ auth, requireUser, limiters, issueCsrfToken, oauthClients }: AuthRouterDeps) {
+export function createAuthRouter({ auth, requireUser, limiters, issueCsrfToken, oauthProviders }: AuthRouterDeps) {
   const router = Router();
   const controller = createAuthController(auth);
 
@@ -78,9 +77,13 @@ export function createAuthRouter({ auth, requireUser, limiters, issueCsrfToken, 
   // One fixed route per configured provider, not `/oauth/:provider`: the name in the URL is never looked up, so an
   // unknown provider is simply 404. The browser navigates here (a link, not fetch) and is redirected to the provider.
   // Global limit only: it only creates random values. No `returnTo` parameter: it would be an open redirect.
-  for (const [provider, client] of oauthClients) {
-    const oauthController = createOAuthController(provider, client);
-    router.get(`/oauth/${provider}`, oauthController.start);
+  for (const [name, provider] of oauthProviders) {
+    const oauthController = createOAuthController(name, provider, auth);
+    router.get(`/oauth/${name}`, oauthController.start);
+    // The provider sends the browser back here. A GET navigation from another site, so no CSRF token: `state` does
+    // that job. Global limit only: without a matching state cookie it stops before any call to the provider. A script
+    // can still get a fresh cookie from the start route each time, so the global limit is what caps calls to GitHub.
+    router.get(`/oauth/${name}/callback`, oauthController.callback);
   }
 
   return router;

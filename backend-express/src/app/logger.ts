@@ -8,4 +8,7 @@ export const logger = createLogger({
   // Safety net: a `User` object holds the bcrypt hash. Code should log only public fields, but if a whole user ever
   // ends up in a log line, the hash must not (a leaked hash can be attacked offline).
   redactKeys: ['passwordHash'],
+  // The OAuth callback URL carries the provider's `code` and our `state` (dev logs the query). Exact paths, because a
+  // `code` key everywhere would also hide error codes.
+  redactPaths: ['query.code', 'query.state'],
 });

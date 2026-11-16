@@ -8,6 +8,7 @@ export {
   type AuthorizationRequest,
   type OAuthClient,
   type OAuthClientOptions,
+  type OAuthProfile,
   type OAuthTokens,
 } from './core.js';
-export { GITHUB_ENDPOINTS } from './providers/github.js';
+export { fetchGithubProfile, GITHUB_ENDPOINTS, GITHUB_SCOPES } from './providers/github.js';

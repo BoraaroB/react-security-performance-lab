@@ -13,7 +13,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  passwordHash: string;
+  passwordHash: string | null;
   role: Role;
   createdAt: string;
 }
@@ -37,7 +37,7 @@ export class EmailTakenError extends Error {
 export interface NewUser {
   email: string;
   name: string;
-  passwordHash: string;
+  passwordHash: string | null;
   role: Role;
 }
 
@@ -50,6 +50,10 @@ function normalizeEmail(email: string): string {
 // encrypted column) fails to decrypt instead of showing the wrong person's data.
 function nameContext(id: string): string {
   return `users.name:${id}`;
+}
+
+function oauthIdentityKey(provider: string, providerUserId: string): string {
+  return `${provider}:${providerUserId}`;
 }
 
 /** Data access for users. Encryption at rest happens here, so services and routes only ever see plain values. */
@@ -99,6 +103,17 @@ export function createUsersRepository(store: Store, encryptor: Encryptor) {
     findByEmail(email: string): User | undefined {
       const id = store.userIdsByEmail.get(normalizeEmail(email));
       return id === undefined ? undefined : findById(id);
+    },
+
+    /** The user who logged in with this provider account before, if any. */
+    findByOAuthIdentity(provider: string, providerUserId: string): User | undefined {
+      const id = store.userIdsByOAuthIdentity.get(oauthIdentityKey(provider, providerUserId));
+      return id === undefined ? undefined : findById(id);
+    },
+
+    /** Links a provider account to a user, so the next login with it finds this user. */
+    addOAuthIdentity(userId: string, provider: string, providerUserId: string): void {
+      store.userIdsByOAuthIdentity.set(oauthIdentityKey(provider, providerUserId), userId);
     },
 
     /** Replaces the stored bcrypt hash (e.g. an upgrade to a higher cost at login). Does nothing for an unknown ID. */

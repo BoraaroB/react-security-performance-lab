@@ -19,7 +19,8 @@ const REFRESH_COOKIE_OPTIONS: CookieOptions = {
   path: REFRESH_COOKIE_PATH,
 };
 
-function setRefreshCookie(res: Response, refreshToken: AuthResult['refreshToken']) {
+// Exported: the OAuth callback starts a session too.
+export function setRefreshCookie(res: Response, refreshToken: AuthResult['refreshToken']) {
   const options = { ...REFRESH_COOKIE_OPTIONS, expires: refreshToken.expiresAt };
   res.cookie(REFRESH_COOKIE, refreshToken.token, options);
 }
