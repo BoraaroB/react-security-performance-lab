@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 12a (RBAC + admin user list, PR #25)
-- **In review:** step 12b (`pr/12b-posts`): posts store + repository, `GET /api/posts`, `POST /api/posts`
-- **Next:** step 12c (`pr/12c-post-ownership`): `DELETE /api/posts/:id`, owner or admin (IDOR), 404 vs 403.
+- **Last merged:** 12b (posts list + create, PR #26)
+- **In review:** step 12c (`pr/12c-post-ownership`): `DELETE /api/posts/:id`, owner or admin (IDOR), 404 vs 403
+- **Next:** step 12d (`pr/12d-admin-role-change`): `PATCH /api/admin/users/:id/role` (no self-demotion, keep at least one admin).
 
 ## How to resume after `/clear`
 
@@ -46,6 +46,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | – | Mobile auth | ✅ PR #23 (`feat/mobile-auth`) | `/api/mobile/auth/*`, refresh token in JSON, no CORS, `createAuthLimiters()` shared by web and mobile |
 | 11 | CSRF | ✅ PR #24 | `lib/csrf` (`createCsrfTokenService`, `createCsrfProtection` → `protect`, `issueToken`), `GET /api/auth/csrf`, `CSRF_SECRET` |
 | 12a | RBAC + admin users | ✅ PR #25 | `lib/rbac` (`hasRole`, `authorize({ allowedRoles, getRole })`), `GET /api/admin/users`, `requireAdmin` |
+| 12b | Posts list + create | ✅ PR #26 | `PostRecord`, `posts.repository.ts`, `GET /api/posts`, `POST /api/posts`; second commit simplified the code for readability |
 
 ## Decisions (and why)
 
@@ -392,6 +393,13 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   trimmed, 1–10,000 UTF-16 units (≤ 3 bytes each in UTF-8, so ≤ ~30 kb: fits the 32 kb JSON limit; tested with 10,000
   CJK characters → 201), no control characters except `\n`, `\r`, `\t` (found in review). `\p{Cf}` is allowed in
   content (emoji need the zero-width joiner), not in the title.
+- **Post ownership (step 12c):** `DELETE /api/posts/:id` → 204. `postIdParamsSchema` (`id: z.uuid()`) → 400 for a
+  non-UUID. `posts.service.deletePost(user, postId)`: unknown → 404 `NOT_FOUND` "Post not found"; not the author
+  (`post.authorId === user.id`) and not an admin (`user.role === 'admin'`) → 403 `FORBIDDEN` (same message as
+  `authorize`); else `posts.delete`. The check is in the service (it needs the loaded post), not in a middleware, and
+  uses `req.user`, never a value from the request. 403 (not 404) for "not yours" because every logged-in user already
+  sees every post; private resources should answer 404. A plain `user.role === 'admin'` instead of `hasRole` from
+  `lib/rbac`: one comparison, easier to read. CSRF from `app.ts`, global limit only, `no-store` from the router.
 - **Simpler code (user's request after 12b, applies to every step):** the code must be easy to read for someone who
   just opens the file. No helper functions for one call site (inline the `if`), named regexes instead of bare ones,
   short comments (the "why" in 1–2 lines; long explanations go to the PR description), one field per line in objects. No HTML stripping on input: text is stored as typed and escaped on output (React); DOMPurify
@@ -429,6 +437,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Posts list is not paginated (12b):** `GET /api/posts` returns every post and decrypts each author's name once per
   post. Same fix as the admin list: `limit` + a cursor. No per-user limit on creating posts either (global 300 / 15 min
   only), so one user can fill the in-memory store; a real app would add a write limiter per user.
+- **Deletes are permanent and not audited (12c):** a deleted post is gone (no soft delete), and an admin deleting
+  someone else's post leaves only the request log line (`DELETE /api/posts/<id> → 204`, no "who deleted whose post").
+  A real app would keep an audit log for admin actions. Not planned.
 - **Admin user list is not paginated (12a review, low):** `GET /api/admin/users` returns every user and decrypts
   every name on each call. Fine for the in-memory demo; a real store needs `limit` + a cursor (Zod-validated query).
 - **Key rotation (07a):** not supported. Changing `DATA_ENCRYPTION_KEY` makes all encrypted values unreadable (with an

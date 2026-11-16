@@ -31,3 +31,10 @@ export const createPostSchema = z.object({
 });
 
 export type CreatePostInput = z.output<typeof createPostSchema>;
+
+// Post IDs are random UUIDs (posts.repository.ts), so anything else is rejected before the lookup.
+export const postIdParamsSchema = z.object({
+  id: z.uuid(),
+});
+
+export type PostIdParams = z.output<typeof postIdParamsSchema>;

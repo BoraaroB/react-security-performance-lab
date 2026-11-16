@@ -1,5 +1,5 @@
 import type { RequestHandler } from 'express';
-import type { CreatePostInput } from '../schemas/posts.schemas.js';
+import type { CreatePostInput, PostIdParams } from '../schemas/posts.schemas.js';
 import type { PostsService } from '../services/posts.service.js';
 
 export function createPostsController(posts: PostsService) {
@@ -17,5 +17,13 @@ export function createPostsController(posts: PostsService) {
     res.status(201).json({ post });
   };
 
-  return { list, create };
+  const remove: RequestHandler<PostIdParams> = (req, res) => {
+    // Same as `create`: without `req.user` the wiring is broken, so answer 500 and delete nothing.
+    if (!req.user) throw new Error('Posts routes must run after requireUser');
+
+    posts.deletePost(req.user, req.params.id);
+    res.status(204).end();
+  };
+
+  return { list, create, remove };
 }
