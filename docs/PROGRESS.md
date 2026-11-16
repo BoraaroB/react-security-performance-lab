@@ -5,9 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 12b (posts list + create, PR #26)
-- **In review:** step 12c (`pr/12c-post-ownership`): `DELETE /api/posts/:id`, owner or admin (IDOR), 404 vs 403
-- **Next:** step 12d (`pr/12d-admin-role-change`): `PATCH /api/admin/users/:id/role` (no self-demotion, keep at least one admin).
+- **Last merged:** 12c (post ownership, PR #27)
+- **In review:** step 12d (`pr/12d-admin-role-change`): `PATCH /api/admin/users/:id/role` (no self-demotion, keep at least one admin)
+- **Next:** step 13 (`pr/13-oauth-github`): OAuth 2.0 Authorization Code + PKCE + `state` (optional, needs GitHub keys).
+  Ask the user first whether to do it, and how to split it (it is bigger than ~150 lines).
 
 ## How to resume after `/clear`
 
@@ -47,6 +48,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 11 | CSRF | ✅ PR #24 | `lib/csrf` (`createCsrfTokenService`, `createCsrfProtection` → `protect`, `issueToken`), `GET /api/auth/csrf`, `CSRF_SECRET` |
 | 12a | RBAC + admin users | ✅ PR #25 | `lib/rbac` (`hasRole`, `authorize({ allowedRoles, getRole })`), `GET /api/admin/users`, `requireAdmin` |
 | 12b | Posts list + create | ✅ PR #26 | `PostRecord`, `posts.repository.ts`, `GET /api/posts`, `POST /api/posts`; second commit simplified the code for readability |
+| 12c | Post ownership | ✅ PR #27 | `DELETE /api/posts/:id` (owner or admin, 404 vs 403); second commit added `getCurrentUser(req)` |
 
 ## Decisions (and why)
 
@@ -404,6 +406,23 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   call it instead of `if (!req.user) throw ...`: Express types cannot know a middleware ran first, so `req.user` stays
   optional; the helper narrows it and throws (500, fail closed) on a wiring bug. Never `req.user!`. Used by posts
   `create`/`remove` and auth `me`; every new handler that needs the user (12d) uses it too.
+- **Role change (step 12d):** `PATCH /api/admin/users/:id/role` `{ role }` → 200 `{ user }` (public shape).
+  `admin.schemas.ts`: `userIdParamsSchema` (`z.uuid()`), `changeRoleSchema` (`z.enum(ROLES)`; extra fields stripped).
+  **Roles have one source (user's review):** `ROLES = ['user', 'admin'] as const` in `store.ts`, `Role =
+  (typeof ROLES)[number]`, re-exported by `users.repository.ts`. No TypeScript `enum` (runtime code, not erasable,
+  plain strings not assignable). A new role is added only to `ROLES`. `admin.service.changeRole(currentAdmin, userId, role)` →
+  `{ user, previousRole }`: unknown → 404 `NOT_FOUND` "User not found" (admins see every user, so 404 hides nothing);
+  target is the caller → 409 `CANNOT_CHANGE_OWN_ROLE` (new code; any own change, not only a demotion); then the
+  caller is loaded AGAIN and must still be an admin, else 403 `FORBIDDEN` (found in review: `validate` is async, so
+  another request can demote the caller after `requireAdmin` ran). That re-check also keeps at least one admin: the
+  caller is an admin at write time and is not the target, so two admins demoting each other cannot leave none. No
+  separate admin count (an earlier `LAST_ADMIN` check was dropped as redundant in review). The re-check and the write
+  run synchronously (atomic with the in-memory store); a real database needs one transaction for both.
+  Repository: `updateRole` (void, like `updatePasswordHash`). No session revocation needed: the role is loaded per
+  request, so a demotion counts on the next request (tested with the same token). The controller writes an `info`
+  line "User role changed" `{ adminId, userId, from, to }` via `req.log` (the first handler log line in the app; IDs
+  only; `from === to` marks a no-op). CSRF from `app.ts`, `requireAdmin` + `no-store` from the admin router, global
+  limit only.
 - **Simpler code (user's request after 12b, applies to every step):** the code must be easy to read for someone who
   just opens the file. No helper functions for one call site (inline the `if`), named regexes instead of bare ones,
   short comments (the "why" in 1–2 lines; long explanations go to the PR description), one field per line in objects. No HTML stripping on input: text is stored as typed and escaped on output (React); DOMPurify
@@ -441,7 +460,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Posts list is not paginated (12b):** `GET /api/posts` returns every post and decrypts each author's name once per
   post. Same fix as the admin list: `limit` + a cursor. No per-user limit on creating posts either (global 300 / 15 min
   only), so one user can fill the in-memory store; a real app would add a write limiter per user.
-- **Deletes are permanent and not audited (12c):** a deleted post is gone (no soft delete), and an admin deleting
+- **Deletes are permanent and not audited (12c; role changes are logged since 12d):** a deleted post is gone (no soft delete), and an admin deleting
   someone else's post leaves only the request log line (`DELETE /api/posts/<id> → 204`, no "who deleted whose post").
   A real app would keep an audit log for admin actions. Not planned.
 - **Admin user list is not paginated (12a review, low):** `GET /api/admin/users` returns every user and decrypts

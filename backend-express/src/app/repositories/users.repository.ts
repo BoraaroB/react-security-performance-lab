@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Encryptor } from '../../lib/crypto/index.js';
-import type { Store, UserRecord } from '../store.js';
+import type { Role, Store, UserRecord } from '../store.js';
 
-export type Role = UserRecord['role'];
+// Re-exported, so services keep importing user types from one place.
+export type { Role };
 
 /**
  * A user as the rest of the app sees it: `name` is already decrypted. It still has `passwordHash`, so never send or
@@ -104,6 +105,12 @@ export function createUsersRepository(store: Store, encryptor: Encryptor) {
     updatePasswordHash(id: string, passwordHash: string): void {
       const record = store.users.get(id);
       if (record) record.passwordHash = passwordHash;
+    },
+
+    /** Changes the stored role. Does nothing for an unknown ID. */
+    updateRole(id: string, role: Role): void {
+      const record = store.users.get(id);
+      if (record) record.role = role;
     },
   };
 }
