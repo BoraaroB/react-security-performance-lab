@@ -407,8 +407,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   optional; the helper narrows it and throws (500, fail closed) on a wiring bug. Never `req.user!`. Used by posts
   `create`/`remove` and auth `me`; every new handler that needs the user (12d) uses it too.
 - **Role change (step 12d):** `PATCH /api/admin/users/:id/role` `{ role }` → 200 `{ user }` (public shape).
-  `admin.schemas.ts`: `userIdParamsSchema` (`z.uuid()`), `changeRoleSchema` (`z.enum(['user', 'admin'])`, must match
-  `UserRecord['role']`; extra fields stripped). `admin.service.changeRole(currentAdmin, userId, role)` →
+  `admin.schemas.ts`: `userIdParamsSchema` (`z.uuid()`), `changeRoleSchema` (`z.enum(ROLES)`; extra fields stripped).
+  **Roles have one source (user's review):** `ROLES = ['user', 'admin'] as const` in `store.ts`, `Role =
+  (typeof ROLES)[number]`, re-exported by `users.repository.ts`. No TypeScript `enum` (runtime code, not erasable,
+  plain strings not assignable). A new role is added only to `ROLES`. `admin.service.changeRole(currentAdmin, userId, role)` →
   `{ user, previousRole }`: unknown → 404 `NOT_FOUND` "User not found" (admins see every user, so 404 hides nothing);
   target is the caller → 409 `CANNOT_CHANGE_OWN_ROLE` (new code; any own change, not only a demotion); then the
   caller is loaded AGAIN and must still be an admin, else 403 `FORBIDDEN` (found in review: `validate` is async, so

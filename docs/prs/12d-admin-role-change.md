@@ -7,9 +7,11 @@ not only by `requireAdmin` at the start of the request). Together they keep at l
 demotion takes effect on the user's very next request. goal.md topic: "authentication and authorization".
 
 ## Changes
+- `backend-express/src/app/store.ts`: `ROLES = ['user', 'admin'] as const` and `Role` built from it (second commit,
+  see Review): the only list of roles.
 - `backend-express/src/app/schemas/admin.schemas.ts` (new): `userIdParamsSchema` (`id` must be a UUID) and
-  `changeRoleSchema` (`role`: `user` or `admin`; other fields are stripped).
-- `backend-express/src/app/repositories/users.repository.ts`: `updateRole(id, role)`.
+  `changeRoleSchema` (`role`: `z.enum(ROLES)`; other fields are stripped).
+- `backend-express/src/app/repositories/users.repository.ts`: `updateRole(id, role)`; `Role` is re-exported from `store.ts`.
 - `backend-express/src/app/services/admin.service.ts`: `changeRole(currentAdmin, userId, role)` → `{ user, previousRole }`:
   unknown → 404 `NOT_FOUND`; own role → 409 `CANNOT_CHANGE_OWN_ROLE`; caller no longer an admin → 403 `FORBIDDEN`; else update.
 - `backend-express/src/app/controllers/admin.controller.ts`: `changeRole` → 200 `{ user }`, plus an `info` log line
@@ -62,8 +64,11 @@ rules (not yourself, caller still an admin) right before the write → write →
   `LAST_ADMIN` count (409) redundant, so it was removed with `countByRole`: simpler code, same guarantee.
 - **code-reviewer (nit) + security-reviewer (low) → fixed:** the audit line was written for a no-op and did not show
   the old role. The service now returns `previousRole` and the line logs `from` and `to`.
-- **code-reviewer (nit) → fixed with a comment:** the roles in `changeRoleSchema` are typed by hand; a comment now
-  points to `UserRecord['role']` in `store.ts` (fails safe: a new role is rejected with 400 until added).
+- **code-reviewer (nit) → fixed (second commit, user's review):** the roles were written twice (`'user' | 'admin'` in
+  `store.ts`, `z.enum(['user', 'admin'])` in the schema). Now `store.ts` has one `ROLES` array (`as const`); `Role` is
+  `(typeof ROLES)[number]` and the schema uses `z.enum(ROLES)`. Not a TypeScript `enum`: it generates runtime code
+  (not allowed with `erasableSyntaxOnly` / Node's type stripping), and a plain `'admin'` string would no longer be
+  assignable to it. Re-checked: typecheck, build, `"root"` → 400 with the allowed options, `"admin"` → 200.
 
 ## Interview questions
 1. **Why does a demotion work at once here, and what would change with the role inside the JWT?** The role is loaded
