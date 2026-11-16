@@ -62,6 +62,16 @@ export interface OAuthTokens {
   scope: string;
 }
 
+/** Who logged in, read from the provider's API with its access token (e.g. `fetchGithubProfile`). */
+export interface OAuthProfile {
+  provider: string;
+  /** The provider's stable user ID. Link accounts by `provider` + this, never by email or username (both can change). */
+  providerUserId: string;
+  /** Primary and verified at the provider. */
+  email: string;
+  name: string;
+}
+
 export interface OAuthClient {
   createAuthorizationRequest(): AuthorizationRequest;
   /** Trades the `code` from the callback for the provider's access token. Throws `OAuthError`. */

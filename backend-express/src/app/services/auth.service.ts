@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { AppError } from '../../lib/errors/index.js';
 import type { AccessTokenService } from '../../lib/jwt/index.js';
+import type { OAuthProfile } from '../../lib/oauth/index.js';
 import type { PasswordHasher } from '../../lib/password/index.js';
 import {
   RefreshTokenError,
@@ -14,6 +15,7 @@ import {
   type User,
   type UsersRepository,
 } from '../repositories/users.repository.js';
+import { userName } from '../schemas/auth.schemas.js';
 
 export interface AuthDeps {
   users: UsersRepository;
@@ -83,10 +85,11 @@ export function createAuthService({ users, passwords, accessTokens, refreshToken
       const user = users.findByEmail(email);
       // Always run bcrypt (~200 ms), even for an unknown email. Skipping it would answer unknown emails in ~1 ms,
       // and that difference alone tells an attacker which emails have an account (user enumeration).
-      const hashToCheck = user ? user.passwordHash : await dummyHash;
+      // An OAuth-only account has no password: it gets the dummy hash too, so it answers like a wrong password.
+      const hashToCheck = user?.passwordHash ?? (await dummyHash);
       const valid = await passwords.verify(password, hashToCheck);
-      // One code and one message for both cases, for the same reason: "no such user" would reveal the account list.
-      if (!user || !valid) throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
+      // One code and one message for every case, for the same reason: "no such user" would reveal the account list.
+      if (!user?.passwordHash || !valid) throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
 
       // The password is known to be correct only here, so this is the only moment an old hash (e.g. a lower cost
       // from earlier years) can be replaced with a stronger one.
@@ -95,6 +98,37 @@ export function createAuthService({ users, passwords, accessTokens, refreshToken
         users.updatePasswordHash(user.id, newHash);
       }
 
+      return startSession(user);
+    },
+
+    /** "Log in with GitHub": the same session as a password login, for the user linked to this provider account. */
+    async loginWithOAuth(profile: OAuthProfile): Promise<AuthResult> {
+      // Linked by the provider's user ID only, never by email: an attacker could have registered the victim's email
+      // here with a password first, and would keep that password into the victim's account (pre-account hijacking).
+      const linked = users.findByOAuthIdentity(profile.provider, profile.providerUserId);
+      if (linked) return startSession(linked);
+
+      // A GitHub name may be empty, too long, or full of invisible characters: then the email's local part is used
+      // (cut to the same 100-character limit as every other name).
+      const parsedName = userName.safeParse(profile.name);
+      const atIndex = profile.email.indexOf('@');
+      const emailLocalPart = profile.email.slice(0, atIndex);
+      const name = parsedName.success ? parsedName.data : emailLocalPart.slice(0, 100);
+      let user: User;
+      try {
+        // No password: this account can only log in through the provider (password login answers INVALID_CREDENTIALS).
+        user = users.create({ name, email: profile.email, passwordHash: null, role: 'user' });
+      } catch (error) {
+        // The email belongs to another account here (password or another provider account). Not linked (see above):
+        // that account keeps its own login method.
+        if (error instanceof EmailTakenError) {
+          throw new AppError(409, 'OAUTH_EMAIL_TAKEN', 'An account with this email already exists');
+        }
+        throw error;
+      }
+      // No `await` since findByOAuthIdentity, so two parallel callbacks cannot both create an account (in memory;
+      // a real database needs one transaction and a unique index on provider + providerUserId).
+      users.addOAuthIdentity(user.id, profile.provider, profile.providerUserId);
       return startSession(user);
     },
 

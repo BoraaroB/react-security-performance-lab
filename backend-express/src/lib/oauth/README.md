@@ -11,14 +11,14 @@ stolen authorization code works only together with the verifier of the login tha
 ## Usage
 
 ```ts
-import { createOAuthClient, GITHUB_ENDPOINTS, isSameState, OAuthError } from './lib/oauth/index.js';
+import { createOAuthClient, fetchGithubProfile, GITHUB_ENDPOINTS, GITHUB_SCOPES, isSameState, OAuthError } from './lib/oauth/index.js';
 
 const github = createOAuthClient({
   ...GITHUB_ENDPOINTS,
   clientId: process.env.GITHUB_CLIENT_ID!,
   clientSecret: process.env.GITHUB_CLIENT_SECRET!,
   redirectUri: 'http://localhost:4000/api/auth/oauth/github/callback',
-  scopes: ['read:user', 'user:email'],
+  scopes: GITHUB_SCOPES, // ['user:email']: needed to read the verified primary email
 });
 
 // 1. Start: keep `state` + `codeVerifier` in a short-lived httpOnly cookie (see Notes), then redirect to `url`.
@@ -30,7 +30,9 @@ const { url, state, codeVerifier } = github.createAuthorizationRequest();
 if (!isSameState(savedState, query.state)) return res.redirect('/login?error=OAUTH_FAILED');
 try {
   const { accessToken } = await github.exchangeCode(query.code, savedCodeVerifier);
-  // call the provider's API with accessToken (e.g. GET https://api.github.com/user)
+  // { provider: 'github', providerUserId: '583231', email: 'octo@example.com', name: 'The Octocat' }
+  const profile = await fetchGithubProfile(accessToken);
+  // find the user by provider + providerUserId (never by email), or create one; then start YOUR OWN session
 } catch (error) {
   if (error instanceof OAuthError) {
     // log error.providerError (e.g. 'bad_verification_code'), then redirect to the login page
@@ -52,7 +54,10 @@ try {
 
 ## Providers
 `core.ts` is the same for every provider (all security logic lives there, written and reviewed once). Each provider
-gets one small file in `providers/` with only what differs: its endpoints (and, later, reading its user profile).
+gets one small file in `providers/` with only what differs: its endpoints, its scopes, and reading its user profile
+into an `OAuthProfile` (`{ provider, providerUserId, email, name }`). `fetchGithubProfile` reads `/user` and
+`/user/emails`, takes only the PRIMARY and VERIFIED email, does not follow redirects (the token goes only to
+api.github.com), and throws `OAuthError` on anything unexpected.
 To add Google, create `providers/google.ts`:
 ```ts
 export const GOOGLE_ENDPOINTS = {
@@ -74,6 +79,9 @@ export const GOOGLE_ENDPOINTS = {
   `Strict` cookie would not be sent with it (every login would fail). Never `SameSite=None`. The callback clears it on
   success AND failure, so one pair works only once. Anyone with both the cookie and the `code` can finish the login,
   so never log it.
+- **Link accounts by `provider` + `providerUserId`, never by email.** Auto-linking by email lets someone who
+  registered the victim's email first (with a password) keep access to the victim's account (pre-account hijacking),
+  and some providers let users set an email they do not own. Usernames can be renamed and reused, so they are no key either.
 - **The provider's access token is not our session.** Use it once to read the user's profile, then issue our own
   tokens. Never send it to the browser.
 - **Redirects are not followed** on the code exchange, so the client secret goes only to `tokenUrl`.

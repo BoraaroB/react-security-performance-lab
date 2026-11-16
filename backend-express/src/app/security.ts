@@ -2,7 +2,14 @@
 import { createEncryptor } from '../lib/crypto/index.js';
 import { createCsrfTokenService } from '../lib/csrf/index.js';
 import { createAccessTokenService } from '../lib/jwt/index.js';
-import { createOAuthClient, GITHUB_ENDPOINTS, type OAuthClient } from '../lib/oauth/index.js';
+import {
+  createOAuthClient,
+  fetchGithubProfile,
+  GITHUB_ENDPOINTS,
+  GITHUB_SCOPES,
+  type OAuthClient,
+  type OAuthProfile,
+} from '../lib/oauth/index.js';
 import { createPasswordHasher } from '../lib/password/index.js';
 import { config } from './config.js';
 
@@ -34,14 +41,19 @@ export function oauthCallbackPath(provider: OAuthProviderName) {
 
 // Only the configured providers. auth.routes.ts loops over it to register one fixed route each; it is never looked
 // up with a name from the request.
-export const oauthClients = new Map<OAuthProviderName, OAuthClient>();
+export interface OAuthProvider {
+  client: OAuthClient;
+  /** Reads who logged in, with the provider's access token. */
+  fetchProfile: (accessToken: string) => Promise<OAuthProfile>;
+}
+export const oauthProviders = new Map<OAuthProviderName, OAuthProvider>();
 
 if (config.oauth.github) {
-  // No scopes: GitHub's minimum (the public profile) is enough to know who logs in.
-  const github = createOAuthClient({
+  const client = createOAuthClient({
     ...GITHUB_ENDPOINTS,
     ...config.oauth.github,
+    scopes: GITHUB_SCOPES,
     redirectUri: `${config.apiOrigin}${oauthCallbackPath('github')}`,
   });
-  oauthClients.set('github', github);
+  oauthProviders.set('github', { client, fetchProfile: fetchGithubProfile });
 }

@@ -44,8 +44,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 12c | `pr/12c-post-ownership` | `DELETE /posts/:id`: owner or admin (resource ownership, IDOR), 404 vs 403 | – | S2 | ✅ |
 | 12d | `pr/12d-admin-role-change` | `PATCH /admin/users/:id/role`: admin changes a role (no self-demotion / keep at least one admin) | – | S2 | ✅ |
 | 13a | `pr/13a-oauth-core` | OAuth 2.0 client core: Authorization Code + PKCE (S256) + `state`, code exchange; no routes | `lib/oauth` | S2 | ✅ |
-| 13b | `pr/13b-oauth-github-start` | Optional `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` (routes off without them), `GET /auth/oauth/github` → redirect, `state` + verifier in an `HttpOnly; Secure; SameSite=Lax` cookie (Path = callback, ~10 min; `Strict` would break the return from GitHub) | – | S2 | 🔍 |
-| 13c | `pr/13c-oauth-github-callback` | Callback: Zod-validate the query (`code`, `state`, provider `error`), clear the cookie (success and failure), check `state`, exchange the code, read the GitHub user (`fetchGithubProfile` in `lib/oauth/providers/github.ts`), link by `provider + providerUserId` (never auto-link by email), accounts without a password, refresh cookie, redirect to the frontend (failures → login page with a stable error code, never a 500) | – | S2 | ⬜ |
+| 13b | `pr/13b-oauth-github-start` | Optional `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` (routes off without them), `GET /auth/oauth/github` → redirect, `state` + verifier in an `HttpOnly; Secure; SameSite=Lax` cookie (Path = callback, ~10 min; `Strict` would break the return from GitHub) | – | S2 | ✅ |
+| 13c | `pr/13c-oauth-github-callback` | Callback: Zod-validate the query (`code`, `state`, provider `error`), clear the cookie (success and failure), check `state`, exchange the code, read the GitHub user (`fetchGithubProfile` in `lib/oauth/providers/github.ts`), link by `provider + providerUserId` (never auto-link by email), accounts without a password, refresh cookie, redirect to the frontend (failures → login page with a stable error code, never a 500) | – | S2 | 🔍 |
 
 ## Phase B: Frontend (`frontend`)
 
@@ -57,7 +57,7 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 17 | `pr/17-error-handling-ui` | ErrorBoundary, route and chunk-load errors, toast system, React 19 `onCaughtError`/`onUncaughtError` | `components/feedback/*` | – | ⬜ |
 | 18 | `pr/18-http-client` | Fetch client: `ApiError`/`NetworkError`/`TimeoutError`, timeout, retry + backoff, abort, offline banner; shows the server's request ID in errors | `lib/http`, `hooks/useOnlineStatus` | S3, DX | ⬜ |
 | 19 | `pr/19-use-fetch` | `useFetch` with AbortController (no leaks), `ErrorState` with a retry button | `hooks/useFetch` | P3 | ⬜ |
-| 20 | `pr/20-forms` | react-hook-form + Zod, mapping server errors to fields, login and register forms | `lib/forms` | S1 | ⬜ |
+| 20 | `pr/20-forms` | react-hook-form + Zod, mapping server errors to fields, login and register forms; "Log in with GitHub" link (a plain `<a href>`, not fetch) and the `/login?error=OAUTH_FAILED \| OAUTH_DENIED \| OAUTH_EMAIL_TAKEN` messages (from 13c) | `lib/forms` | S1 | ⬜ |
 | 21 | `pr/21-auth-client` | In-memory token, single-flight refresh, CSRF header, AuthProvider, ProtectedRoute, RequireRole, safe redirect | `lib/http` (auth plugin) | S1, S2 | ⬜ |
 | 22 | `pr/22-dashboard-admin` | Posts (create, optimistic delete with `useOptimistic`), admin role management | – | S2, P1 | ⬜ |
 | 23 | `pr/23-security-demo` | Demos: XSS (React escaping vs DOMPurify), dangerous URLs, CSRF, rate limit, CSP in `vite preview` | `lib/sanitize` | S1, S3 | ⬜ |

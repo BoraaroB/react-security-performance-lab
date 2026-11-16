@@ -5,10 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 13a (OAuth core, PR #29)
-- **In review:** step 13b (`pr/13b-oauth-github-start`): GitHub config + `GET /api/auth/oauth/github` (cookie + redirect)
-- **Next:** step 13c (`pr/13c-oauth-github-callback`): the callback (validate query, clear cookie, check `state`,
-  exchange the code, read the GitHub user, link/create the account, refresh cookie, redirect to the frontend).
+- **Last merged:** 13b (OAuth login start, PR #30)
+- **In review:** step 13c (`pr/13c-oauth-github-callback`): the OAuth callback (GitHub login works end to end)
+- **Next:** step 14 (`pr/14-frontend-setup`): Phase B starts (Vite 7 + React 19 + TS + Tailwind 4). This is the
+  first frontend step: `frontend/` does not exist yet and is created from scratch.
 
 ## How to resume after `/clear`
 
@@ -51,7 +51,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 12c | Post ownership | ✅ PR #27 | `DELETE /api/posts/:id` (owner or admin, 404 vs 403); second commit added `getCurrentUser(req)` |
 | 12d | Admin role change | ✅ PR #28 | `PATCH /api/admin/users/:id/role`, `CANNOT_CHANGE_OWN_ROLE`, caller re-checked before the write; second commit: `ROLES` const array |
 | 13a | OAuth core | ✅ PR #29 | `lib/oauth` (`createOAuthClient` → `createAuthorizationRequest`, `exchangeCode`; `isSameState`) |
-| 13b | GitHub login start | 🔍 `pr/13b-oauth-github-start` | `API_ORIGIN`, `GITHUB_CLIENT_ID`/`SECRET`, `oauthClients` Map + `oauthCallbackPath()` in `security.ts`, generic `oauth.controller.ts`, `__Secure-oauth_<provider>` cookie; second commit: generic providers |
+| 13b | GitHub login start | ✅ PR #30 | `API_ORIGIN`, `GITHUB_CLIENT_ID`/`SECRET`, `oauthClients` Map + `oauthCallbackPath()` in `security.ts`, generic `oauth.controller.ts`, `__Secure-oauth_<provider>` cookie; second commit: generic providers |
+| 13c | GitHub login callback | 🔍 `pr/13c-oauth-github-callback` | `fetchGithubProfile` + `GITHUB_SCOPES` + `OAuthProfile` in `lib/oauth`; password-less users + `userIdsByOAuthIdentity`; `loginWithOAuth`; `FRONTEND_ORIGIN`; `GET /api/auth/oauth/github/callback` |
 
 ## Decisions (and why)
 
@@ -477,6 +478,36 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   **Apple does not fit as is:** with name/email scopes it returns with a cross-site POST (`response_mode=form_post`),
   so a `SameSite=Lax` cookie is not sent and the CSRF middleware blocks the POST, and its client secret is a
   short-lived JWT signed with a private key. Apple would need its own step.
+- **OAuth callback (step 13c, one PR of ~200 lines by the user's choice, 2026-11-16):** `GET /api/auth/oauth/<provider>/callback`.
+  Order: read the state cookie and clear it (success AND failure) → Zod-validate the query (`code` ≤ 512, `state` ≤ 128,
+  `error` ≤ 128; a repeated parameter is an array and fails) → `isSameState` FIRST (also before trusting `error`) →
+  `error=access_denied` → `OAUTH_DENIED`, any other error or no code → `OAUTH_FAILED` → `exchangeCode` →
+  `fetchProfile` → `auth.loginWithOAuth` → refresh cookie (same `setRefreshCookie` as password login) → 302 to
+  `${FRONTEND_ORIGIN}/`. Every failure → 302 to `${FRONTEND_ORIGIN}/login?error=<OAUTH_FAILED | OAUTH_DENIED |
+  OAUTH_EMAIL_TAKEN>` and one `warn` line with `provider` and the reason or `err` (OAuthError carries `providerError`);
+  never a 500 or JSON. The access token is never put in a URL: the frontend calls `POST /refresh` on load (step 21).
+  The provider's access token is used for the two profile calls and then dropped.
+- **GitHub email (13c, user's choice):** scope `user:email` (`GITHUB_SCOPES`), `/user/emails`, only the PRIMARY and
+  VERIFIED address; no such address → `OAUTH_FAILED`. `fetchGithubProfile` (lib) checks both responses with Zod
+  (`id` must be a number), sends the token only to api.github.com (`redirect: 'error'`, 10 s timeout), and maps every
+  failure to `OAuthError`. Name = GitHub `name` or else `login`; the service checks it with the register rules
+  (`userName` exported from `auth.schemas.ts`) and falls back to the email's local part.
+- **OAuth accounts (13c):** `UserRecord.passwordHash` is `string | null` (null = OAuth-only). Password login on such an
+  account checks the dummy hash and answers `INVALID_CREDENTIALS` (same timing, no "this account uses GitHub" hint).
+  Links live in `store.userIdsByOAuthIdentity` (`<provider>:<providerUserId>` → user ID; like an `oauth_identities`
+  table); repository `findByOAuthIdentity`, `addOAuthIdentity`. `loginWithOAuth`: linked → new session; else create
+  (role `user`, no password) and link; email taken by another account → 409 `OAUTH_EMAIL_TAKEN`, never auto-linked.
+  No `await` between the lookup and the link, so parallel callbacks cannot create two accounts (in memory). Name and
+  email are not updated from the provider on later logins.
+- **Map of providers (13c):** `oauthClients` became `oauthProviders: Map<OAuthProviderName, { client, fetchProfile }>`,
+  so the controller stays provider-generic. `createOAuthController(name, provider, auth)` → `start`, `callback`.
+- **Log redaction of the callback query (13c review):** dev logs the query, so `lib/logger` got `redactPaths`
+  (exact pino paths) and `app/logger.ts` redacts `query.code` and `query.state`. Not a `code` key at every depth:
+  it would hide `err.code` and every error code.
+- **Frontend part of OAuth (13c review):** added to step 20: the "Log in with GitHub" link (plain `<a href>`) and
+  messages for `/login?error=OAUTH_FAILED | OAUTH_DENIED | OAUTH_EMAIL_TAKEN`.
+- **`FRONTEND_ORIGIN` (13c):** exact origin (`isExactOrigin`), default `http://localhost:5173`, https required in
+  production when a provider is on (same check as `API_ORIGIN`). Not derived from `CORS_ORIGINS` (that is a list).
 - **Simpler code (user's request after 12b, applies to every step):** the code must be easy to read for someone who
   just opens the file. No helper functions for one call site (inline the `if`), named regexes instead of bare ones,
   short comments (the "why" in 1–2 lines; long explanations go to the PR description), one field per line in objects. No HTML stripping on input: text is stored as typed and escaped on output (React); DOMPurify
@@ -563,9 +594,17 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   does not stop a hacked `*.example.com` from setting it. The attacker plants their own `state.verifier` and sends the
   victim to the callback with their own `code`: login CSRF (the victim ends up in the attacker's account). Signing
   would not help (our start route hands out valid values). `__Host-oauth_github` with `Path=/` would close it (sent
-  with every API request for 10 minutes); kept `__Secure-` + callback path as planned. **Rule for 13c:** the callback
+  with every API request for 10 minutes); kept `__Secure-` + callback path as planned. **Rule for 13c (followed):** the callback
   must never link GitHub to an already logged-in account (it cannot anyway: the `SameSite=Strict` refresh cookie is not
   sent on the navigation back from GitHub); otherwise this gap becomes account takeover.
+- **No way to link GitHub to an existing password account (13c):** if the GitHub email already has a local account,
+  the login ends with `OAUTH_EMAIL_TAKEN`. Safe linking needs the user to be logged in with the password first and
+  then start a "connect GitHub" flow. Not planned.
+- **OAuth-only accounts cannot set a password (13c):** no "set password" or password-reset flow exists. Not planned.
+- **Callback calls to GitHub are capped only by the global limit (13c review):** a script can take a fresh state
+  cookie from the start route and call the callback with a junk code, about 150 outbound token requests per IP per
+  15 minutes. A small per-IP limiter on the callback would lower that. Not planned.
+- **Provider profile changes are not synced (13c):** name and email are taken once, when the account is created.
 - **A failed refresh does not clear the cookie (10b):** a dead `refresh_token` cookie stays in the browser until it
   expires, the user logs in again, or logs out (10c clears it; harmless anyway: it is useless).
 - **No "log out everywhere" (10c):** logout ends only the current login. A password change or "log out of all devices"

@@ -16,18 +16,21 @@ export type LoginInput = z.output<typeof loginSchema>;
 
 const MIN_PASSWORD_CHARACTERS = 15;
 
+// No control or invisible characters (zero-width space, right-to-left override, ...): they can make a name look
+// empty or look like someone else's. `trim()` does not remove them. React escapes HTML, so this is about spoofing.
+// Exported: names from an OAuth provider (13c) follow the same rules.
+export const userName = z
+  .string()
+  .trim()
+  .normalize('NFC')
+  .min(1)
+  .max(100)
+  .regex(/^[^\p{Cc}\p{Cf}]+$/u, 'Must not contain control or invisible characters');
+
 // No `role` field: a new account is always a plain user. A `"role": "admin"` in the body is stripped here, and the
 // service sets the role itself (mass-assignment protection).
 export const registerSchema = z.object({
-  // No control or invisible characters (zero-width space, right-to-left override, ...): they can make a name look
-  // empty or look like someone else's. `trim()` does not remove them. React escapes HTML, so this is about spoofing.
-  name: z
-    .string()
-    .trim()
-    .normalize('NFC')
-    .min(1)
-    .max(100)
-    .regex(/^[^\p{Cc}\p{Cf}]+$/u, 'Must not contain control or invisible characters'),
+  name: userName,
   email,
   // NIST SP 800-63B-4 (2025): at least 15 characters when the password is the only factor (as here), and no forced
   // rules like "one digit and one symbol" (they lead to "Password1!"): length matters more. Characters are counted as

@@ -27,6 +27,8 @@ export interface LoggerOptions {
   pretty?: boolean;
   /** Extra keys to redact, added to DEFAULT_REDACT_KEYS. */
   redactKeys?: string[];
+  /** Exact pino paths to redact (e.g. `query.code`), for keys too common to redact everywhere. */
+  redactPaths?: string[];
 }
 
 /**
@@ -43,11 +45,12 @@ export function buildRedactPaths(keys: readonly string[]): string[] {
 }
 
 export function createLogger(options: LoggerOptions = {}): Logger {
-  const { level = 'info', pretty = false, redactKeys = [] } = options;
+  const { level = 'info', pretty = false, redactKeys = [], redactPaths = [] } = options;
+  const paths = [...buildRedactPaths([...DEFAULT_REDACT_KEYS, ...redactKeys]), ...redactPaths];
 
   return pino({
     level,
-    redact: { paths: buildRedactPaths([...DEFAULT_REDACT_KEYS, ...redactKeys]), censor: '[REDACTED]' },
+    redact: { paths, censor: '[REDACTED]' },
     // ISO time is readable in raw JSON and still sorts correctly in log tools.
     timestamp: pino.stdTimeFunctions.isoTime,
     transport: pretty

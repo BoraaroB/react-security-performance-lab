@@ -42,6 +42,7 @@ Production output: one JSON object per line, without `query` and `body`.
 | `level` | pino level | `'info'` | Minimum level to log |
 | `pretty` | `boolean` | `false` | Colored, readable output via `pino-pretty` |
 | `redactKeys` | `string[]` | `[]` | Extra keys to redact, on top of `DEFAULT_REDACT_KEYS` |
+| `redactPaths` | `string[]` | `[]` | Exact pino paths (e.g. `query.code`), for keys too common to redact at every depth |
 
 `createRequestLogger(options)`
 
