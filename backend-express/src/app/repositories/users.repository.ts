@@ -105,6 +105,12 @@ export function createUsersRepository(store: Store, encryptor: Encryptor) {
       const record = store.users.get(id);
       if (record) record.passwordHash = passwordHash;
     },
+
+    /** Changes the stored role. Does nothing for an unknown ID. */
+    updateRole(id: string, role: Role): void {
+      const record = store.users.get(id);
+      if (record) record.role = role;
+    },
   };
 }
 

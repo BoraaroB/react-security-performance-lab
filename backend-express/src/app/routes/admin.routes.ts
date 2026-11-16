@@ -1,5 +1,7 @@
 import { Router, type RequestHandler } from 'express';
+import { validate } from '../../lib/validation/index.js';
 import { createAdminController } from '../controllers/admin.controller.js';
+import { changeRoleSchema, userIdParamsSchema } from '../schemas/admin.schemas.js';
 import type { AdminService } from '../services/admin.service.js';
 
 export interface AdminRouterDeps {
@@ -23,6 +25,8 @@ export function createAdminRouter({ admin, requireAdmin }: AdminRouterDeps) {
   router.use(requireAdmin);
 
   router.get('/users', controller.listUsers);
+  // The CSRF check (PATCH) already ran in app.ts, before this router.
+  router.patch('/users/:id/role', validate({ params: userIdParamsSchema, body: changeRoleSchema }), controller.changeRole);
 
   return router;
 }

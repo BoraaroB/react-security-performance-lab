@@ -41,8 +41,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 11 | `pr/11-csrf` | Signed double-submit CSRF + `Origin` check, `GET /auth/csrf` | `lib/csrf` | S1 | ✅ |
 | 12a | `pr/12a-rbac-admin-users` | Roles (`user`/`admin`), `authorize(...)` (403 `FORBIDDEN`), role read from the user loaded per request, `GET /admin/users` | `lib/rbac` | S2 | ✅ |
 | 12b | `pr/12b-posts` | Posts store + repository, `GET /posts`, `POST /posts` (content ≤ 10,000 characters, see the 32 kb JSON limit), `no-store` | – | S2, S3 | ✅ |
-| 12c | `pr/12c-post-ownership` | `DELETE /posts/:id`: owner or admin (resource ownership, IDOR), 404 vs 403 | – | S2 | 🔍 |
-| 12d | `pr/12d-admin-role-change` | `PATCH /admin/users/:id/role`: admin changes a role (no self-demotion / keep at least one admin) | – | S2 | ⬜ |
+| 12c | `pr/12c-post-ownership` | `DELETE /posts/:id`: owner or admin (resource ownership, IDOR), 404 vs 403 | – | S2 | ✅ |
+| 12d | `pr/12d-admin-role-change` | `PATCH /admin/users/:id/role`: admin changes a role (no self-demotion / keep at least one admin) | – | S2 | 🔍 |
 | 13 | `pr/13-oauth-github` | OAuth 2.0 Authorization Code + PKCE + `state` (optional, needs GitHub keys) | `lib/oauth` | S2 | ⬜ |
 
 ## Phase B: Frontend (`frontend`)
@@ -144,6 +144,6 @@ Mobile routes (`/api/mobile/*`, side PR `feat/mobile-auth`) never use cookies, s
 mounted before CORS, so browsers cannot read them. Nest (step 28) implements them too.
 
 Errors: `{ "error": { "code", "message", "details"?, "requestId" } }`. Key codes: `VALIDATION_ERROR`, `UNAUTHORIZED`,
-`TOKEN_EXPIRED`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `FORBIDDEN`, `CSRF_INVALID`, `RATE_LIMITED`, `NOT_FOUND`, `INTERNAL_ERROR`.
+`TOKEN_EXPIRED`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `FORBIDDEN`, `CANNOT_CHANGE_OWN_ROLE`, `CSRF_INVALID`, `RATE_LIMITED`, `NOT_FOUND`, `INTERNAL_ERROR`.
 
 Seeded demo accounts: `admin@example.com` / `Admin123!` (admin) and `user@example.com` / `User1234!` (user).
