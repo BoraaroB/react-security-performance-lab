@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** side branch `feat/sticky-header` (PR #41). Phase A (Express backend) is complete.
-- **In review:** step 18a (`pr/18a-http-client`): `lib/http` core (typed errors, timeout, abort, API-origin check) + `src/config/http.ts`.
-- **Next:** step 18b (`pr/18b-http-retry`): retry + backoff in `lib/http`. Then 18c (`useOnlineStatus` + offline banner).
+- **Last merged:** step 18a (`pr/18a-http-client`, PR #42). Phase A (Express backend) is complete.
+- **In review:** step 18b (`pr/18b-http-retry`): retry + exponential backoff (full jitter, `Retry-After`) for GET in `lib/http`.
+- **Next:** step 18c (`pr/18c-online-status`): `hooks/useOnlineStatus` (`useSyncExternalStore`) + offline banner in the layout.
 
 ## How to resume after `/clear`
 
@@ -62,7 +62,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 17c | Toasts | ✅ PR #39 | `components/feedback/Toast/` (`ToastProvider` + `useToast()` → `showToast({ message, variant? })`, `ToastItem` with timer cleanup), provider in `main.tsx`, demo buttons on `/components` |
 | – | Sonner toasts | ✅ PR #40 | `components/feedback/Toast/` deleted; `sonner` 2.0.8, `<Toaster richColors closeButton />` in `main.tsx`, demo calls `toast.info/success/error`; old module kept as reference in `src/examples/custom-toast/`; CLAUDE.md updated |
 | – | Sticky header | ✅ PR #41 (`feat/sticky-header`) | `RootLayout` header `sticky top-0 z-10`, `bg-white/70` + `backdrop-blur-md` (fallback `bg-white/95`), `html { scroll-padding-top: 4rem }` in `index.css` |
-| 18a | HTTP client core | 🔍 `pr/18a-http-client` | `lib/http` (`createHttpClient({ apiOrigin })` → `request<T>`; `ApiError`/`NetworkError`/`TimeoutError`), `src/config/http.ts` (`VITE_API_ORIGIN`), demo card on `/components` |
+| 18a | HTTP client core | ✅ PR #42 | `lib/http` (`createHttpClient({ apiOrigin })` → `request<T>`; `ApiError`/`NetworkError`/`TimeoutError`), `src/config/http.ts` (`VITE_API_ORIGIN`), demo card on `/components` |
+| 18b | HTTP retry | 🔍 `pr/18b-http-retry` | `lib/http/retry.ts` (`parseRetryAfterMs`, `getRetryDelayMs`, `wait`), `request` loops over `requestOnce`; options `retries` (2) + `maxRetryDelayMs` (10 s); `ApiError.retryAfterMs` |
 
 ## Decisions (and why)
 
@@ -687,6 +688,18 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   The body is read with `text()` then `JSON.parse` (one place for both cases). No custom headers option yet (step 21 adds
   `Authorization` and `X-CSRF-Token`), `credentials` stays `'same-origin'` in the app until step 21 needs cookies.
   UI rule: show a text mapped from `error.code` (+ `requestId`), never `error.message`. Errors use sonner's `id` + `duration: Infinity` rule.
+- **HTTP retry (step 18b):** `lib/http/retry.ts` (own file, the step's one concept). Only GET is retried (a POST whose
+  response was lost may already be done; idempotent PUT/DELETE are not retried either, as the plan says "safe methods").
+  Retried: `NetworkError`, `TimeoutError`, `ApiError` 408/429/502/503/504. Not retried: other 4xx, 500 (a bug fails
+  again), `INVALID_RESPONSE`, the caller's `AbortError`, plain `Error`s (bad path, GET with a body).
+  Delay: `Retry-After` when present (seconds or HTTP date; also on `ApiError.retryAfterMs` for the UI), and a
+  `Retry-After` above `maxRetryDelayMs` (default 10 s) means "give up at once". Our limiters send the seconds left
+  in their window, so a 429 is retried only in the last 10 s of a window (18b code review); otherwise full jitter `random(0, min(cap, 500 ms × 2^attempt))`. Defaults:
+  `retries = 2` (3 attempts), per request `retries` override. `retries` must be a whole number ≥ 0 and
+  `maxRetryDelayMs` positive (NaN/Infinity would retry forever, 18b review). `Retry-After` dates must be IMF-fixdate
+  (`Date.parse` alone reads "1.5" as 2001 → a 0 ms wait). `timeoutMs` is per attempt. `wait(ms, signal)` rejects
+  with `signal.reason` on abort and removes its listener when the timer fires. The demo card was not changed: its
+  buttons already show retries in the Network tab.
 - **Frontend env (step 18a):** glue lives in `src/config/` (portable-module skill). `src/config/http.ts` creates the
   one client from `VITE_API_ORIGIN`; default `http://localhost:4000` only in dev (`import.meta.env.DEV`); a production
   build without it throws when the module loads (no silent calls to localhost), and so does a plain `http://` origin
@@ -852,6 +865,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   2 days old at install time). Dev-only (`npm audit --omit=dev` is clean) and reachable only through glob patterns we
   write. Re-check before step 35: its CI runs `npm audit --audit-level=high`, which this picomatch advisory would fail.
   Upgrade typescript-eslint once 8.73+ is two weeks old (with `--before`).
+- **Slowest failure takes ~31 s (18b):** `timeoutMs` (10 s) applies per attempt, so a hanging API keeps a GET spinner
+  up for 3 × 10 s plus the delays. A total deadline (or a shorter timeout for user-facing calls) can be added if it hurts.
+- **Retries while offline (18b → 18c):** a GET retries even when `navigator.onLine` is false. Harmless (a few failed
+  requests), and 18c's banner tells the user why.
 - **No runtime check of API responses (18a):** `request<T>` trusts the server's JSON shape; a changed API gives a
   wrong type at runtime, not a clear error. A Zod schema per call (step 20 adds Zod to the frontend) would fix it.
 - **`AbortSignal.any` needs Safari 17.4+ (18a):** older browsers fail every request with a `TypeError` (`AbortSignal.any is not a function`). Accepted (no polyfill, no `browserslist` target yet).

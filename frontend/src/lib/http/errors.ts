@@ -12,6 +12,7 @@ export type ApiErrorOptions = {
   message: string;
   details?: FieldError[];
   requestId?: string;
+  retryAfterMs?: number;
 };
 
 // The server answered with a 4xx/5xx, or a 2xx body that is not JSON (`INVALID_RESPONSE`).
@@ -23,6 +24,8 @@ export class ApiError extends Error {
   readonly details: FieldError[];
   // The server logs every error under this ID; show it so a support ticket can be matched to the log line.
   readonly requestId: string | undefined;
+  // From the `Retry-After` header (e.g. on a 429): how long the server asks us to wait.
+  readonly retryAfterMs: number | undefined;
 
   constructor(options: ApiErrorOptions) {
     super(options.message);
@@ -30,6 +33,7 @@ export class ApiError extends Error {
     this.code = options.code;
     this.details = options.details ?? [];
     this.requestId = options.requestId;
+    this.retryAfterMs = options.retryAfterMs;
   }
 }
 
