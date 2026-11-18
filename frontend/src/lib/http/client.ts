@@ -1,4 +1,5 @@
 import { ApiError, NetworkError, TimeoutError, type FieldError } from './errors';
+import { getRetryDelayMs, parseRetryAfterMs, wait } from './retry';
 
 export type HttpClientOptions = {
   // Exact origin of the API, e.g. 'https://api.example.com' (no path, no trailing slash).
@@ -7,6 +8,10 @@ export type HttpClientOptions = {
   timeoutMs?: number;
   // Default: 'same-origin'. Use 'include' only when the API is on another origin and needs its cookies.
   credentials?: RequestCredentials;
+  // Default: 2. Extra attempts for a GET after a network error, a timeout, or a 408/429/502/503/504.
+  retries?: number;
+  // Default: 10 s. The longest wait between attempts; a longer Retry-After means "give up now".
+  maxRetryDelayMs?: number;
 };
 
 export type RequestOptions = {
@@ -15,8 +20,10 @@ export type RequestOptions = {
   body?: unknown;
   // Lets the caller cancel (e.g. when a component unmounts).
   signal?: AbortSignal;
-  // Overrides the client's timeout for this request.
+  // Overrides the client's timeout for this request (each attempt gets the full timeout).
   timeoutMs?: number;
+  // Overrides the client's retries for this request (GET only).
+  retries?: number;
 };
 
 export type HttpClient = {
@@ -30,8 +37,14 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
   }
   const defaultTimeoutMs = options.timeoutMs ?? 10_000;
   const credentials = options.credentials ?? 'same-origin';
+  const defaultRetries = options.retries ?? 2;
+  const maxRetryDelayMs = options.maxRetryDelayMs ?? 10_000;
+  // NaN here would make every delay NaN, and setTimeout(NaN) fires at once: a tight retry loop.
+  if (!Number.isFinite(maxRetryDelayMs) || maxRetryDelayMs <= 0) {
+    throw new Error(`maxRetryDelayMs must be a positive number, got ${maxRetryDelayMs}`);
+  }
 
-  async function request<T>(path: string, requestOptions: RequestOptions = {}): Promise<T> {
+  async function requestOnce<T>(path: string, requestOptions: RequestOptions): Promise<T> {
     // '//evil.com/x' or 'https://evil.com' would leave our API. The body and the headers this client adds
     // (the access token and CSRF token from step 21) must never go to another host.
     const url = new URL(path, apiOrigin);
@@ -107,6 +120,7 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
         // The items are trusted to be { field, message }, like the success data below.
         details: Array.isArray(details) ? (details as FieldError[]) : [],
         requestId: typeof requestId === 'string' ? requestId : (response.headers.get('X-Request-Id') ?? undefined),
+        retryAfterMs: parseRetryAfterMs(response.headers.get('Retry-After')),
       });
     }
 
@@ -121,6 +135,31 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
 
     // Not checked at runtime: the caller trusts the API's shape (a Zod parse could go here later).
     return data as T;
+  }
+
+  async function request<T>(path: string, requestOptions: RequestOptions = {}): Promise<T> {
+    // Only GET is retried: a POST whose response was lost may already have created the post,
+    // and sending it again would create a second one.
+    const method = requestOptions.method ?? 'GET';
+    const retries = method === 'GET' ? (requestOptions.retries ?? defaultRetries) : 0;
+    // `attempt >= NaN` (or Infinity) is never true: the loop would hit a failing server forever.
+    if (!Number.isInteger(retries) || retries < 0) {
+      throw new Error(`retries must be a whole number of 0 or more, got ${retries}`);
+    }
+
+    let attempt = 0;
+    while (true) {
+      try {
+        return await requestOnce<T>(path, requestOptions);
+      } catch (error) {
+        const delayMs = getRetryDelayMs(error, attempt, maxRetryDelayMs);
+        if (attempt >= retries || delayMs === undefined) {
+          throw error;
+        }
+        await wait(delayMs, requestOptions.signal);
+        attempt += 1;
+      }
+    }
   }
 
   return { request };

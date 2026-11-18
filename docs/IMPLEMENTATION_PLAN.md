@@ -59,8 +59,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 17a | `pr/17a-route-errors` | Router `errorElement` (`RouteErrorPage`): no message or stack, chunk-load errors get their own text, "Reload" button, header stays for page errors | – | P2 | ✅ |
 | 17b | `pr/17b-error-boundary` | `ErrorBoundary` for parts of a page (fallback + reset), React 19 `onCaughtError`/`onUncaughtError` in `createRoot` (one place to log errors) | `components/feedback/ErrorBoundary` | DX | ✅ |
 | 17c | `pr/17c-toasts` | Toast system: `ToastProvider` + `useToast`, `aria-live`, auto-dismiss with timer cleanup | `components/feedback/Toast` (later replaced by the `sonner` library, side PR `chore/sonner-toasts`) | – | ✅ |
-| 18a | `pr/18a-http-client` | Fetch client core: `ApiError`/`NetworkError`/`TimeoutError`, timeout, abort, requests only to the API origin; shows the server's request ID in errors | `lib/http` | S3, DX | 🔍 |
-| 18b | `pr/18b-http-retry` | Retry + exponential backoff (safe methods only, honors `Retry-After`, abort cancels the wait) | `lib/http` (extended) | S3 | ⬜ |
+| 18a | `pr/18a-http-client` | Fetch client core: `ApiError`/`NetworkError`/`TimeoutError`, timeout, abort, requests only to the API origin; shows the server's request ID in errors | `lib/http` | S3, DX | ✅ |
+| 18b | `pr/18b-http-retry` | Retry + exponential backoff (safe methods only, honors `Retry-After`, abort cancels the wait) | `lib/http` (extended) | S3 | 🔍 |
 | 18c | `pr/18c-online-status` | `useOnlineStatus` (`useSyncExternalStore`) + offline banner in the layout | `hooks/useOnlineStatus` | DX | ⬜ |
 | 19 | `pr/19-use-fetch` | `useFetch` with AbortController (no leaks), `ErrorState` with a retry button | `hooks/useFetch` | P3 | ⬜ |
 | 20 | `pr/20-forms` | react-hook-form + Zod, mapping server errors to fields, login and register forms; "Log in with GitHub" link (a plain `<a href>`, not fetch) and the `/login?error=OAUTH_FAILED \| OAUTH_DENIED \| OAUTH_EMAIL_TAKEN` messages (from 13c) | `lib/forms` | S1 | ⬜ |
