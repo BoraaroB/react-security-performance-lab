@@ -1,1 +1,8 @@
 @import 'tailwindcss';
+
+/* The sticky header covers the top of the page. When the browser scrolls to a focused element (Tab) or to a
+   #link target, it keeps this much space free at the top, so the element is not hidden under the header
+   (WCAG 2.4.11 Focus Not Obscured). A little more than the header's height. */
+html {
+  scroll-padding-top: 4rem;
+}

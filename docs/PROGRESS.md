@@ -5,8 +5,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 17c (custom toasts, PR #39). Phase A (Express backend) is complete.
-- **In review:** side branch `chore/sonner-toasts`: the custom toast module is replaced by the `sonner` library (user's decision).
+- **Last merged:** side branch `chore/sonner-toasts` (PR #40; sonner instead of the custom toasts). Phase A (Express backend) is complete.
+- **In review:** side branch `feat/sticky-header`: sticky, see-through (blurred) header + `scroll-padding-top` (user's request).
 - **Next:** step 18 (`pr/18-http-client`): `lib/http` (`ApiError`/`NetworkError`/`TimeoutError`, timeout, retry, abort) + `hooks/useOnlineStatus`. Likely needs a split (18a, 18b, ...): ask the user.
 
 ## How to resume after `/clear`
@@ -60,7 +60,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 17a | Route errors | ✅ PR #37 | `pages/RouteErrorPage.tsx` (`useRouteError`, `CHUNK_LOAD_ERROR` regex, Reload + home link), two `errorElement`s in `routes.tsx` (pathless route around the pages + the layout route) |
 | 17b | ErrorBoundary + root error hooks | ✅ PR #38 | `components/feedback/ErrorBoundary/` (class, `fallback({ error, reset })`, no logging), `createRoot(…, { onCaughtError, onUncaughtError })` in `main.tsx`, `BrokenWidget` demo card on `/components` |
 | 17c | Toasts | ✅ PR #39 | `components/feedback/Toast/` (`ToastProvider` + `useToast()` → `showToast({ message, variant? })`, `ToastItem` with timer cleanup), provider in `main.tsx`, demo buttons on `/components` |
-| – | Sonner toasts | 🔍 `chore/sonner-toasts` | `components/feedback/Toast/` deleted; `sonner` 2.0.8, `<Toaster richColors closeButton />` in `main.tsx`, demo calls `toast.info/success/error`; old module kept as reference in `src/examples/custom-toast/`; CLAUDE.md updated |
+| – | Sonner toasts | ✅ PR #40 | `components/feedback/Toast/` deleted; `sonner` 2.0.8, `<Toaster richColors closeButton />` in `main.tsx`, demo calls `toast.info/success/error`; old module kept as reference in `src/examples/custom-toast/`; CLAUDE.md updated |
+| – | Sticky header | 🔍 `feat/sticky-header` | `RootLayout` header `sticky top-0 z-10`, `bg-white/70` + `backdrop-blur-md` (fallback `bg-white/95`), `html { scroll-padding-top: 4rem }` in `index.css` |
 
 ## Decisions (and why)
 
@@ -658,6 +659,15 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   of adding a new one. Without it, an error repeated in a loop piles up never-closing toasts: sonner shows only 3,
   but keeps the rest in state and in the DOM (it never drops an active toast; 17c had `maxToasts` for this; review). No wrapper around sonner (a layer without a benefit).
   Cost: main file 350 → 384 kB (gzip +9 kB), because `Toaster` is in `main.tsx`.
+- **Sticky header (`feat/sticky-header`, user's request):** `sticky` (not `fixed`: stays in the flow, no top padding
+  to keep in sync), `z-10` (below sonner's toaster). See-through + blur: `bg-white/70 backdrop-blur-md` only under
+  `supports-[backdrop-filter]`, else `bg-white/95` (readable links). Safari 16.4–17.x have only
+  `-webkit-backdrop-filter`, so they get the 95% background, still blurred (review; untested in Safari). Always see-through (no scroll listener): the
+  effect is visible exactly when content scrolls under it. `html { scroll-padding-top: 4rem }` in `index.css` keeps a
+  focused element or `#anchor` target out from under the 45 px header (WCAG 2.4.11; checked with real Shift+Tab in
+  headless Chrome, not in Firefox/Safari). If the header grows (e.g. a
+  user menu in step 21), check that 4rem is still more than its height. No ancestor of the header may get
+  `overflow: hidden/auto`, or `sticky` stops working.
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
