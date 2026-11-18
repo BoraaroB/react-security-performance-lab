@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
-import { useToast } from '@/components/feedback/Toast';
+import { toast } from 'sonner';
 import { Alert, Badge, Button, Card, FormField, Input, Select, Spinner, Textarea } from '@/components/ui';
 
 // Demo for the error boundary: the click only sets state; the error is thrown during the next RENDER.
@@ -19,8 +19,6 @@ function BrokenWidget() {
 
 // Showcase of the UI components (a living style guide), so changes to them can be checked by eye.
 export default function ComponentsPage() {
-  const showToast = useToast();
-
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-gray-900">UI components</h1>
@@ -56,13 +54,18 @@ export default function ComponentsPage() {
       </Alert>
 
       <Card className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" onClick={() => showToast({ message: 'Changes saved' })}>
+        <Button variant="secondary" onClick={() => toast.info('Changes saved')}>
           Info toast
         </Button>
-        <Button variant="secondary" onClick={() => showToast({ message: 'Post deleted', variant: 'success' })}>
+        <Button variant="secondary" onClick={() => toast.success('Post deleted')}>
           Success toast
         </Button>
-        <Button variant="secondary" onClick={() => showToast({ message: 'Could not save the post', variant: 'error' })}>
+        <Button
+          variant="secondary"
+          // Errors stay until closed (time to read them). A fixed `id` replaces the old toast instead of adding one,
+          // so clicking again (or a request failing in a loop) cannot pile up toasts that never close.
+          onClick={() => toast.error('Could not save the post', { id: 'demo-save-error', duration: Infinity })}
+        >
           Error toast
         </Button>
       </Card>

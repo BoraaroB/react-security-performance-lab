@@ -5,8 +5,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 17b (ErrorBoundary + root error hooks, PR #38). Phase A (Express backend) is complete.
-- **In review:** step 17c (`pr/17c-toasts`): `components/feedback/Toast` (`ToastProvider` + `useToast`, polite live region, timer cleanup).
+- **Last merged:** 17c (custom toasts, PR #39). Phase A (Express backend) is complete.
+- **In review:** side branch `chore/sonner-toasts`: the custom toast module is replaced by the `sonner` library (user's decision).
 - **Next:** step 18 (`pr/18-http-client`): `lib/http` (`ApiError`/`NetworkError`/`TimeoutError`, timeout, retry, abort) + `hooks/useOnlineStatus`. Likely needs a split (18a, 18b, ...): ask the user.
 
 ## How to resume after `/clear`
@@ -59,7 +59,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 16b | Lazy pages + preload | ✅ PR #36 | `lib/lazy-with-preload` (`lazyWithPreload(load)` → lazy component + `preload()`), `router/lazy-pages.ts` (only Components), `Suspense` in `RootLayout`; second commit: no own promise cache, Home + 404 eager |
 | 17a | Route errors | ✅ PR #37 | `pages/RouteErrorPage.tsx` (`useRouteError`, `CHUNK_LOAD_ERROR` regex, Reload + home link), two `errorElement`s in `routes.tsx` (pathless route around the pages + the layout route) |
 | 17b | ErrorBoundary + root error hooks | ✅ PR #38 | `components/feedback/ErrorBoundary/` (class, `fallback({ error, reset })`, no logging), `createRoot(…, { onCaughtError, onUncaughtError })` in `main.tsx`, `BrokenWidget` demo card on `/components` |
-| 17c | Toasts | 🔍 `pr/17c-toasts` | `components/feedback/Toast/` (`ToastProvider` + `useToast()` → `showToast({ message, variant? })`, `ToastItem` with timer cleanup), provider in `main.tsx`, demo buttons on `/components` |
+| 17c | Toasts | ✅ PR #39 | `components/feedback/Toast/` (`ToastProvider` + `useToast()` → `showToast({ message, variant? })`, `ToastItem` with timer cleanup), provider in `main.tsx`, demo buttons on `/components` |
+| – | Sonner toasts | 🔍 `chore/sonner-toasts` | `components/feedback/Toast/` deleted; `sonner` 2.0.8, `<Toaster richColors closeButton />` in `main.tsx`, demo calls `toast.info/success/error`; old module kept as reference in `src/examples/custom-toast/`; CLAUDE.md updated |
 
 ## Decisions (and why)
 
@@ -624,7 +625,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   default handling: console logging, and for uncaught errors also the `window` `error` event), today `console.error` with the component stack; an error-tracking service would go there.
   `onCaughtError` also fires for the router's `errorElement` boundaries. Fallbacks never show `error.message`.
   Demo: `BrokenWidget` on `/components` throws during render after a click (a throw inside `onClick` would not be caught).
-- **Toasts (step 17c):** `src/components/feedback/Toast/` = `ToastProvider.tsx` (state, context, `useToast`) +
+- **Toasts (step 17c, REPLACED by sonner, see the next item):** `src/components/feedback/Toast/` (moved to `src/examples/custom-toast/` as reference code; explained in `docs/prs/17c-toasts.md`) = `ToastProvider.tsx` (state, context, `useToast`) +
   `ToastItem.tsx` (one toast and its timer). API: `const showToast = useToast(); showToast({ message, variant? })`;
   `useToast` outside the provider throws. The context value is ONLY the stable `showToast` function (not the list),
   so callers do not re-render when toasts change. `message` is a `string` rendered as text (never HTML / ReactNode);
@@ -640,6 +641,23 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `role="status"` (implies `aria-atomic="true"`: all visible toasts would be re-read) and no `role="alert"` (errors too
   are polite: they come after an action, the user is not interrupted). Toasts never take focus. `<ToastProvider>` wraps
   `RouterProvider` in `main.tsx`, so route error pages can use it too.
+- **Sonner instead of custom toasts (`chore/sonner-toasts`, user's decision after 17c):** a well-tested library
+  over our own module in the app. The 17c module is kept as reference code in `src/examples/custom-toast/`
+  (user's request: to read how it works inside): README says "reference only", nothing imports it, so it is not in
+  the bundle (checked: its strings are not in `dist/`), but typecheck and lint still check it. **`src/examples/`
+  (new folder, in CLAUDE.md):** reference code the app does not use; never import from it. `sonner@^2.0.8` (MIT, no
+  dependencies, React 18/19). `<Toaster richColors closeButton />` once in `main.tsx` (sibling of `RouterProvider`,
+  no provider); anywhere: `import { toast } from 'sonner'` → `toast.info(...)`, `toast.success(...)`,
+  `toast.error(...)`. Defaults kept: bottom-right, 4 s, at most 3 visible, timers paused on hover, while pressing a
+  toast, after `alt+T` (which focuses the toasts) and while the tab is hidden, but NOT when a toast gets focus with
+  Tab (checked in sonner's source; review). Polite live region (`<section aria-live="polite">`, always rendered),
+  close button `aria-label="Close toast"`, icons `aria-hidden`.
+  **Conventions for later steps:** messages are plain strings mapped from the API error `code` (sonner accepts
+  ReactNode; never pass raw server text or HTML); errors use `toast.error(message, { id: <error code>, duration: Infinity })`: they
+  stay until closed (time to read them, the same rule as 17c), and the stable `id` updates the existing toast instead
+  of adding a new one. Without it, an error repeated in a loop piles up never-closing toasts: sonner shows only 3,
+  but keeps the rest in state and in the DOM (it never drops an active toast; 17c had `maxToasts` for this; review). No wrapper around sonner (a layer without a benefit).
+  Cost: main file 350 → 384 kB (gzip +9 kB), because `Toaster` is in `main.tsx`.
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
@@ -771,18 +789,21 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   while (step 32, nginx) would avoid it. Step 32 should also answer a missing `/assets/*` file with 404, not the SPA's
   `index.html`: given `index.html`, Safari may report a MIME-type error that `CHUNK_LOAD_ERROR` does not match (17a review, untested),
   so the user would see the generic text instead (Reload still works). Errors in event handlers and async code are not caught by `errorElement`
-  (handled by the http client in 18, `useFetch` in 19, toasts in 17c).
+  (handled by the http client in 18, `useFetch` in 19, toasts with sonner).
 - **Route errors are logged twice (17b):** React Router's own boundary calls `console.error("React Router caught the
   following error during render")` and React then calls our `onCaughtError` too. `<RouterProvider onError={...}>`
   (react-router 7.18) replaces that `console.error` (and also fires for loader/action errors, none yet); not used, so
   `onCaughtError` stays the one place to log (17b code review corrected the first version of this note). Harmless
   today (console only); an error-tracking service should report from `onCaughtError` only. Not verified in the
   browser for a route error (only the `/components` widget was clicked).
-- **Toast limits (17c):** no pause on hover/focus (an `info` toast can disappear while being read; `error` toasts
-  stay); `maxToasts` drops the oldest toast even if it is an unread error; the × button's label is part of the live
-  region, so some screen readers read "Dismiss notification" after the message; closing a toast with the keyboard
-  removes the focused × button, so focus falls back to `<body>` (17c code review). Fine for this app; revisit if
-  toasts carry important information.
+- **Sonner injects a `<style>` tag (chore/sonner-toasts → steps 23 and 32):** on import, sonner adds its CSS with
+  `document.createElement('style')`. A strict CSP (`style-src 'self'`) blocks it and the toasts lose their layout.
+  The CSP in step 23 (`vite preview`) and step 32 (nginx) must handle it, three options: (1) a `sha256-…`
+  hash of that CSS in `style-src` (static, but changes with each sonner version); (2) `'unsafe-inline'` for styles
+  only (CSS injection is much weaker than script injection); (3) keep `style-src 'self'` and
+  `import 'sonner/dist/styles.css'` (exported by the package) so Vite bundles the CSS; the blocked injection then only
+  logs a CSP violation (check that the file has the same rules as the injected string; review). React's `style={...}` props are set through the CSSOM and are
+  not blocked by CSP.
 - **React Router ships its development build (16a code review → step 24):** `react-router` 7's `package.json`
   `exports` has no `production` condition; every condition points to `dist/development/`, so Vite bundles the dev
   build (dev warnings on, `console.error` on render errors). The size is the same as the production build. Step 24

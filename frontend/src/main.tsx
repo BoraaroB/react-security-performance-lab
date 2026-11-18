@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router/dom';
-import { ToastProvider } from '@/components/feedback/Toast';
+import { Toaster } from 'sonner';
 import { router } from '@/router';
 import '@/index.css';
 
@@ -26,9 +26,8 @@ const root = createRoot(rootElement, {
 // StrictMode runs effects twice in development, so a missing cleanup (a memory leak) shows up early.
 root.render(
   <StrictMode>
-    {/* Around the router, so every page, the layout and the route error pages can show toasts. */}
-    <ToastProvider>
-      <RouterProvider router={router} />
-    </ToastProvider>
+    <RouterProvider router={router} />
+    {/* Toast notifications (sonner): call `toast(...)` from anywhere; no provider needed. */}
+    <Toaster richColors closeButton />
   </StrictMode>,
 );

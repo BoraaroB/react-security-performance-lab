@@ -1,4 +1,10 @@
-# Toast
+# custom-toast (reference only)
+
+> **Not used by the app and not imported anywhere.** The app shows toasts with the `sonner` library
+> (`<Toaster />` in `main.tsx`). This is the hand-written version from step 17c (PR #39), kept to read and learn
+> from: a polite live region, timer cleanup in `useEffect`, and a stable context value. It stays in `src/` so that
+> typecheck and lint keep it correct; it is not in the bundle because nothing imports it. See
+> `docs/prs/17c-toasts.md` for the explanation and `docs/prs/chore-sonner-toasts.md` for why the app switched.
 
 Short notifications after an action ("Post deleted", "Could not save the post"). Screen readers announce them
 through a polite live region, messages are always rendered as text (no HTML, so no XSS), and every auto-dismiss
@@ -10,7 +16,7 @@ timer is cleared when its toast goes away (no timers left running after unmount)
 
 ## Usage
 ```tsx
-import { ToastProvider, useToast } from '@/components/feedback/Toast';
+import { ToastProvider, useToast } from '@/examples/custom-toast';
 
 // Once, around the whole app (main.tsx):
 <ToastProvider>
@@ -33,5 +39,5 @@ showToast({ message: 'Could not delete the post', variant: 'error' });
 `success` or `error`. Do not pass raw server error text: map the error `code` to a message.
 
 ## How to reuse
-Copy `src/components/feedback/Toast/`. Frontend imports have no `.js` extension. Needs Tailwind for the classes
+Copy `src/examples/custom-toast/`. Frontend imports have no `.js` extension. Needs Tailwind for the classes
 (or replace them with your own CSS).
