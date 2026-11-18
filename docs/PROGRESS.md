@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 14 (frontend setup, PR #32). Phase A (Express backend) is complete.
-- **In review:** step 15a (`pr/15a-ui-components`): Button, Spinner, Badge, Card, Alert in `src/components/ui/`
-- **Next:** step 15b (`pr/15b-form-fields`): FormField, Input, Textarea, Select in the same `components/ui/` module.
+- **Last merged:** 15a (UI components, PR #33). Phase A (Express backend) is complete.
+- **In review:** step 15b (`pr/15b-form-fields`): FormField, Input, Textarea, Select in `src/components/ui/`
+- **Next:** step 16 (`pr/16-router-lazy-loading`): React Router, `React.lazy` + Suspense, preload on hover, layout, 404.
 
 ## How to resume after `/clear`
 
@@ -53,7 +53,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 13b | GitHub login start | ✅ PR #30 | `API_ORIGIN`, `GITHUB_CLIENT_ID`/`SECRET`, `oauthClients` Map + `oauthCallbackPath()` in `security.ts`, generic `oauth.controller.ts`, `__Secure-oauth_<provider>` cookie; second commit: generic providers |
 | 13c | GitHub login callback | ✅ PR #31 | `fetchGithubProfile` + `GITHUB_SCOPES` + `OAuthProfile` in `lib/oauth`; password-less users + `userIdsByOAuthIdentity`; `loginWithOAuth`; `FRONTEND_ORIGIN`; `GET /api/auth/oauth/github/callback` |
 | 14 | Frontend setup | ✅ PR #32 | `frontend/`: Vite 7.3.7, React 19.3.1, Tailwind 4.3.4, TS 5.9 (3 tsconfigs), ESLint 9 + react-hooks 7, `@/` alias, `strictPort`, `lib/cn` (clsx + tailwind-merge) |
-| 15a | UI components (base) | 🔍 `pr/15a-ui-components` | `components/ui/` = Button, Spinner, Badge, Card, Alert + `index.ts` + README; App.tsx is a temporary showcase |
+| 15a | UI components (base) | ✅ PR #33 | `components/ui/` = Button, Spinner, Badge, Card, Alert + `index.ts` + README; App.tsx is a temporary showcase |
+| 15b | Form fields | 🔍 `pr/15b-form-fields` | `FormField` (render prop, `useId`), `Input`, `Textarea`, `Select`, `control-classes.ts`; showcase card in App.tsx |
 
 ## Decisions (and why)
 
@@ -546,6 +547,17 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `HtmlProps<'tag'>` (`types.ts`: `ComponentProps` minus `dangerouslySetInnerHTML`; found in review), so raw HTML
   through a UI component does not compile; 15b uses it too. Spinner has no `children` (only `label`) and is
   `aria-hidden` inside a Button. Disabling a loading Button is UX only, not duplicate protection.
+- **Form fields (step 15b):** `FormField({ label, hint?, error?, children })`: `children` is a render prop
+  `(control) => ReactNode`; `control` = `{ id, 'aria-invalid', 'aria-describedby' }`, spread onto the control together
+  with react-hook-form's `register(...)` (step 20). Chosen over `cloneElement` (fragile, hides where props come from)
+  and over `label`/`error` props on Input (one wrapper for all three controls). Ids from `useId()`. `aria-invalid` is
+  `true` or absent (never `"false"`); `aria-describedby` lists the hint id, then the error id, or is absent. `error` is
+  a `string` (Zod/server messages), rendered as text. No `role="alert"` on field errors (all would be announced at
+  once on submit); step 20 must focus the first invalid field instead (react-hook-form's `shouldFocusError`, on by
+  default). Input, Textarea, Select share `CONTROL_CLASSES` (`control-classes.ts`, not exported from `index.ts`);
+  the red border uses `aria-[invalid=true]:` so the look follows the accessibility state. Controls use `focus:`
+  (not `focus-visible:`) so a clicked text field shows its ring. No `children` on Input/Textarea. Select is native
+  (fixed `h-10`; `className="h-auto"` for `multiple`/`size`). Placeholder color `gray-500` (WCAG contrast; found in review).
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
