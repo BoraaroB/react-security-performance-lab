@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { Spinner } from '@/components/ui';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { cn } from '@/lib/cn';
 import { ComponentsPage } from '@/router/lazy-pages';
 import { PATHS } from '@/router/paths';
@@ -13,6 +14,8 @@ const NAV_LINKS: { to: string; label: string; preload?: () => void }[] = [
 
 // Shared frame for every page: the header stays mounted while <Outlet /> swaps the page below it.
 export function RootLayout() {
+  const isOnline = useOnlineStatus();
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* `sticky` (not `fixed`): it stays in the page flow, so the content below needs no top padding.
@@ -39,6 +42,15 @@ export function RootLayout() {
             </NavLink>
           ))}
         </nav>
+        {/* A live region is only announced reliably if it is already on the page when its text changes,
+            so this wrapper always stays mounted and only the message inside comes and goes. */}
+        <div role="status">
+          {!isOnline && (
+            <p className="border-t border-amber-200 bg-amber-50 px-8 py-2 text-center text-sm text-amber-900">
+              You are offline. Some features may not work until the connection is back.
+            </p>
+          )}
+        </div>
       </header>
       <main className="mx-auto max-w-2xl p-8">
         {/* Shown while a page's code downloads. Inside <main>, so the header stays visible. */}

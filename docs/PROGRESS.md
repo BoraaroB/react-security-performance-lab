@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 18a (`pr/18a-http-client`, PR #42). Phase A (Express backend) is complete.
-- **In review:** step 18b (`pr/18b-http-retry`): retry + exponential backoff (full jitter, `Retry-After`) for GET in `lib/http`.
-- **Next:** step 18c (`pr/18c-online-status`): `hooks/useOnlineStatus` (`useSyncExternalStore`) + offline banner in the layout.
+- **Last merged:** step 18b (`pr/18b-http-retry`, PR #43). Phase A (Express backend) is complete.
+- **In review:** step 18c (`pr/18c-online-status`): `hooks/useOnlineStatus` (`useSyncExternalStore`) + offline banner in `RootLayout`.
+- **Next:** step 19 (`pr/19-use-fetch`): `hooks/useFetch` with AbortController (no leaks) + `ErrorState` with a retry button.
 
 ## How to resume after `/clear`
 
@@ -63,7 +63,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | – | Sonner toasts | ✅ PR #40 | `components/feedback/Toast/` deleted; `sonner` 2.0.8, `<Toaster richColors closeButton />` in `main.tsx`, demo calls `toast.info/success/error`; old module kept as reference in `src/examples/custom-toast/`; CLAUDE.md updated |
 | – | Sticky header | ✅ PR #41 (`feat/sticky-header`) | `RootLayout` header `sticky top-0 z-10`, `bg-white/70` + `backdrop-blur-md` (fallback `bg-white/95`), `html { scroll-padding-top: 4rem }` in `index.css` |
 | 18a | HTTP client core | ✅ PR #42 | `lib/http` (`createHttpClient({ apiOrigin })` → `request<T>`; `ApiError`/`NetworkError`/`TimeoutError`), `src/config/http.ts` (`VITE_API_ORIGIN`), demo card on `/components` |
-| 18b | HTTP retry | 🔍 `pr/18b-http-retry` | `lib/http/retry.ts` (`parseRetryAfterMs`, `getRetryDelayMs`, `wait`), `request` loops over `requestOnce`; options `retries` (2) + `maxRetryDelayMs` (10 s); `ApiError.retryAfterMs` |
+| 18b | HTTP retry | ✅ PR #43 | `lib/http/retry.ts` (`parseRetryAfterMs`, `getRetryDelayMs`, `wait`), `request` loops over `requestOnce`; options `retries` (2) + `maxRetryDelayMs` (10 s); `ApiError.retryAfterMs` |
+| 18c | Online status | 🔍 `pr/18c-online-status` | `hooks/useOnlineStatus` (first `src/hooks/` module; `useSyncExternalStore`, server snapshot `true`), amber banner in the sticky header (`role="status"` wrapper always mounted) |
 
 ## Decisions (and why)
 
@@ -700,6 +701,15 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   (`Date.parse` alone reads "1.5" as 2001 → a 0 ms wait). `timeoutMs` is per attempt. `wait(ms, signal)` rejects
   with `signal.reason` on abort and removes its listener when the timer fires. The demo card was not changed: its
   buttons already show retries in the Network tab.
+- **Online status (step 18c):** `src/hooks/useOnlineStatus/` (first module in `src/hooks/`; `index.ts` holds the hook,
+  no `core.ts`: the core is three tiny functions). `useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)`;
+  `subscribe`/`getSnapshot` live at module level, so React does not resubscribe on every render. Server snapshot
+  `true` (no banner flash before hydration). `navigator.onLine === true` is only a hint (captive Wi-Fi, API down), so
+  requests still handle `NetworkError`. The banner is inline in `RootLayout` (one call site, no own component), inside
+  the sticky header under the nav, amber like `Alert variant="warning"`. Not the `Alert` component: a live region is
+  announced reliably only when it is already mounted, so a plain `<div role="status">` always stays and only the `<p>`
+  inside comes and goes. No "back online" message (the banner just disappears) and no retry when the connection
+  returns: `useFetch` (19) can refetch on `online` if needed.
 - **Frontend env (step 18a):** glue lives in `src/config/` (portable-module skill). `src/config/http.ts` creates the
   one client from `VITE_API_ORIGIN`; default `http://localhost:4000` only in dev (`import.meta.env.DEV`); a production
   build without it throws when the module loads (no silent calls to localhost), and so does a plain `http://` origin
@@ -867,8 +877,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   Upgrade typescript-eslint once 8.73+ is two weeks old (with `--before`).
 - **Slowest failure takes ~31 s (18b):** `timeoutMs` (10 s) applies per attempt, so a hanging API keeps a GET spinner
   up for 3 × 10 s plus the delays. A total deadline (or a shorter timeout for user-facing calls) can be added if it hurts.
-- **Retries while offline (18b → 18c):** a GET retries even when `navigator.onLine` is false. Harmless (a few failed
-  requests), and 18c's banner tells the user why.
+- **Retries while offline (18b, eased in 18c):** a GET still retries when `navigator.onLine` is false. Harmless (a few
+  failed requests); 18c's banner now tells the user why. The client could skip retries while offline; not planned.
+- **Data does not reload when the connection returns (18c → 19):** the banner disappears, but a page that failed
+  while offline keeps its error until the user retries. `useFetch` (19) could refetch on the `online` event.
 - **No runtime check of API responses (18a):** `request<T>` trusts the server's JSON shape; a changed API gives a
   wrong type at runtime, not a clear error. A Zod schema per call (step 20 adds Zod to the frontend) would fix it.
 - **`AbortSignal.any` needs Safari 17.4+ (18a):** older browsers fail every request with a `TypeError` (`AbortSignal.any is not a function`). Accepted (no polyfill, no `browserslist` target yet).
