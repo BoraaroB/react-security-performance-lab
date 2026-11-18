@@ -56,7 +56,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 15a | UI components (base) | ✅ PR #33 | `components/ui/` = Button, Spinner, Badge, Card, Alert + `index.ts` + README; App.tsx is a temporary showcase |
 | 15b | Form fields | ✅ PR #34 | `FormField` (render prop, `useId`), `Input`, `Textarea`, `Select`, `control-classes.ts`; showcase card in App.tsx |
 | 16a | Router + layout + 404 | ✅ PR #35 | `react-router` 7.18.5, `router/` (`index.ts`, `routes.tsx`, `paths.ts` = `PATHS`), `layouts/RootLayout.tsx` (`NavLink` + `Outlet`), `pages/` (Home, Components = old App.tsx, NotFound); second commit: `src/app/` → `src/router/` + `src/layouts/` |
-| 16b | Lazy pages + preload | 🔍 `pr/16b-lazy-loading` | `lib/lazy-with-preload` (`lazyWithPreload(load)` → lazy component + `preload()`), `router/pages.ts`, `Suspense` in `RootLayout`, pages are default exports |
+| 16b | Lazy pages + preload | 🔍 `pr/16b-lazy-loading` | `lib/lazy-with-preload` (`lazyWithPreload(load)` → lazy component + `preload()`), `router/lazy-pages.ts` (only Components), `Suspense` in `RootLayout`; second commit: no own promise cache, Home + 404 eager |
 
 ## Decisions (and why)
 
@@ -579,18 +579,26 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `React.lazy` + Suspense (16b). No `errorElement` yet: a render error shows React Router's default error screen
   (with the stack, see Known gaps) until step 17. The showcase moved from `App.tsx` to `/components` (kept as a living style guide).
 - **Lazy pages (step 16b):** `lib/lazy-with-preload` (no adapter; only `react`): `lazyWithPreload(load)` returns
-  `React.lazy(loadOnce)` + `preload(): void`. One shared download for `preload()` and the render; a failed download
-  resets the cached promise, so a render that starts AFTER a failed preload calls `import()` again (`preload()`
-  swallows its error; whether the browser re-downloads depends on the browser). A download that fails DURING the
-  render (also a hover preload still in flight at the click) is cached by `React.lazy` forever: step 17's error
-  boundary must handle chunk-load errors (offer a reload). Pages are now `export default` (what `React.lazy` expects; the rest of the app keeps named
-  exports). The lazy page objects live in `src/router/pages.ts`, imported by `routes.tsx` and by `RootLayout`
-  (preload) without a circular import. Every page is lazy, including the 404 and the home page (a cold visit to `/` costs one extra
-  request: main file, then `HomePage-*.js`; a bigger app might keep its landing page eager); `RootLayout` stays eager. One
+  `React.lazy(load)` + `preload(): void` = `load().catch(() => {})`. No own promise cache (second commit, user's
+  review: the first version cached the promise and reset it on failure): the browser's module map already downloads
+  a module once per page and makes every later `import()` of it wait for the same download (HTML spec; checked in
+  headless Chrome with 600 ms latency: hover + immediate click = one request). A failed preload is ignored; the
+  render calls `load()` itself (whether a browser re-downloads a failed module differs between browsers). A failed
+  RENDER is cached by `React.lazy` forever: step 17's error boundary must handle chunk-load errors (offer a reload).
+  `preload` is only a speed-up (the plan asks for it); plain `React.lazy` works without it. On touch screens a tap
+  fires `mouseenter` right before the click, so there is no gain there, and no harm.
+  **Which pages are lazy (second commit, user's review):** eager (in the main file) = what nearly every visit needs
+  for the first screen: `RootLayout`, `HomePage` (when lazy, a cold visit to `/` waited for the main file and THEN
+  requested `HomePage-*.js`: a waterfall, to save 0.6 kB) and `NotFoundPage` (a 0.4 kB fallback; a lazy 404 could
+  itself fail to load after a deploy). Lazy = everything else, especially big pages and pages only some users see
+  (admin, demos); today only `ComponentsPage`. Login (the first screen for logged-out users) is decided in step 20.
+  Lazy pages are `export default` (what `React.lazy` expects); eager pages and the rest of the app keep named
+  exports. Lazy page objects live in `src/router/lazy-pages.ts`, imported by `routes.tsx` and by `RootLayout`
+  (preload) without a circular import. `NAV_LINKS` has an optional `preload` (lazy pages only). One
   `<Suspense>` with a `Spinner` around `<Outlet />` inside `<main>` (header stays). React Router 7 runs navigations
   in a transition, so after the first page the old page stays visible until the new chunk arrives (the spinner shows
-  mostly on the first load). Nav links preload on `onMouseEnter` + `onFocus` (no touch preload: touch has no hover).
-  New links to lazy pages (e.g. in 20/21) should preload the same way. Build: main file 349 → 346 kB.
+  mostly on the first load). Nav links preload on `onMouseEnter` + `onFocus`.
+  New links to lazy pages (e.g. in 20/21) should preload the same way. Build: main file 349 → 347 kB.
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).

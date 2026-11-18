@@ -26,13 +26,13 @@ const SettingsPage = lazyWithPreload(() => import('./pages/SettingsPage'));
 ## Options
 | Argument | Type | Description |
 |---|---|---|
-| `load` | `() => Promise<{ default: Component }>` | The same function you would pass to `React.lazy`, usually `() => import('./Page')`. |
+| `load` | `() => Promise<{ default: Component }>` | A plain `() => import('./Page')`. It is called by `preload()` and by the render, so any extra work in a custom loader (a fetch, a retry wrapper) would run more than once; only the module download is shared by the browser. |
 
-Returns the lazy component with `preload(): void`. Calling `preload()` many times downloads the file once; the
-first render reuses the same download. A preload that failed BEFORE the page is rendered is ignored and
-forgotten, so the render calls `import()` again (whether the browser really downloads the file again depends on
-the browser). A download that fails WHILE the page renders (also a preload still in flight at the click) is cached
-by `React.lazy` for good: catch it with an error boundary and offer a reload.
+Returns the lazy component with `preload(): void`, which only calls `load()` early. The module keeps no cache of
+its own: the browser downloads a module once per page, and every later `import()` of the same file (more hovers,
+the render) reuses that download, even one still in flight. A failed `preload()` is ignored; the render calls
+`load()` itself (whether the browser downloads a failed file again depends on the browser). A failed render is
+cached by `React.lazy` for good: catch it with an error boundary and offer a reload.
 
 ## How to reuse
 Copy `src/lib/lazy-with-preload/`. The import must be a literal `import('./path')` so the bundler (Vite, webpack)

@@ -2,13 +2,14 @@ import { Suspense } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import { Spinner } from '@/components/ui';
 import { cn } from '@/lib/cn';
-import { ComponentsPage, HomePage } from '@/router/pages';
+import { ComponentsPage } from '@/router/lazy-pages';
 import { PATHS } from '@/router/paths';
 
-const NAV_LINKS = [
-  { to: PATHS.home, label: 'Home', page: HomePage },
-  { to: PATHS.components, label: 'Components', page: ComponentsPage },
-] as const;
+// `preload` only for lazy pages; Home is already in the first download.
+const NAV_LINKS: { to: string; label: string; preload?: () => void }[] = [
+  { to: PATHS.home, label: 'Home' },
+  { to: PATHS.components, label: 'Components', preload: ComponentsPage.preload },
+];
 
 // Shared frame for every page: the header stays mounted while <Outlet /> swaps the page below it.
 export function RootLayout() {
@@ -23,8 +24,8 @@ export function RootLayout() {
               // Without `end`, "/" would match every URL and Home would always look active.
               end
               // Start downloading the page's code before the click (hover comes a moment before it; focus for keyboard users).
-              onMouseEnter={link.page.preload}
-              onFocus={link.page.preload}
+              onMouseEnter={link.preload}
+              onFocus={link.preload}
               // NavLink also sets aria-current="page" on the active link for screen readers.
               className={({ isActive }) =>
                 cn('text-sm font-medium', isActive ? 'text-blue-700' : 'text-gray-600 hover:text-gray-900')

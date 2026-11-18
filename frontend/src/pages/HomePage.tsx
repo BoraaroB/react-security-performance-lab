@@ -1,6 +1,6 @@
 import { Card } from '@/components/ui';
 
-export default function HomePage() {
+export function HomePage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-gray-900">React Security &amp; Performance Lab</h1>

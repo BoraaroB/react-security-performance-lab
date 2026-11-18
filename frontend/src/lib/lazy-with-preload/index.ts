@@ -13,25 +13,13 @@ export type PreloadableComponent<T extends AnyComponent> = LazyExoticComponent<T
 export function lazyWithPreload<T extends AnyComponent>(
   load: () => Promise<{ default: T }>,
 ): PreloadableComponent<T> {
-  let pending: Promise<{ default: T }> | undefined;
-
-  // One download, shared by preload() and the first render.
-  function loadOnce() {
-    if (!pending) {
-      pending = load();
-      // A failed download is forgotten: a render that starts after a failed preload calls import() again.
-      pending.catch(() => {
-        pending = undefined;
-      });
-    }
-    return pending;
-  }
+  const Component = lazy(load);
 
   function preload() {
-    // Errors are ignored here: the render loads again and shows the error there.
-    loadOnce().catch(() => {});
+    // The browser downloads a module once: the render's import() reuses this download.
+    // Errors are ignored here; the render calls load() itself and shows its own error.
+    load().catch(() => {});
   }
 
-  const Component = lazy(loadOnce);
   return Object.assign(Component, { preload });
 }
