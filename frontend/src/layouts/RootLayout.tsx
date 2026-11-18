@@ -1,9 +1,10 @@
 import { NavLink, Outlet } from 'react-router';
 import { cn } from '@/lib/cn';
+import { PATHS } from '@/router/paths';
 
 const NAV_LINKS = [
-  { to: '/', label: 'Home' },
-  { to: '/components', label: 'Components' },
+  { to: PATHS.home, label: 'Home' },
+  { to: PATHS.components, label: 'Components' },
 ] as const;
 
 // Shared frame for every page: the header stays mounted while <Outlet /> swaps the page below it.

@@ -8,9 +8,11 @@ base for the lazy-loaded pages in 16b (goal P2: bundle size and loading): React 
 
 ## Changes
 - `frontend/package.json`: `react-router@^7.18.5` (installed with `--before`, see Decisions in PROGRESS).
-- `frontend/src/app/router.tsx`: `createBrowserRouter` at module level; the layout route has the pages as children,
-  plus a `*` catch-all for 404.
-- `frontend/src/app/RootLayout.tsx`: header with `NavLink`s (`end`, active color; React Router sets `aria-current="page"`) and `<Outlet />`.
+- `frontend/src/router/routes.tsx`: route config (`RouteObject[]`): the layout route has the pages as children,
+  plus a `*` catch-all for 404. Step 21 adds the protected groups here.
+- `frontend/src/router/paths.ts`: `PATHS` (every URL once, `as const`); links use `PATHS.home`, not `'/'`.
+- `frontend/src/router/index.ts`: `createBrowserRouter(routes)` at module level.
+- `frontend/src/layouts/RootLayout.tsx`: header with `NavLink`s (`end`, active color; React Router sets `aria-current="page"`) and `<Outlet />`.
 - `frontend/src/main.tsx`: renders `<RouterProvider router={router} />` instead of `<App />`.
 - `frontend/src/pages/ComponentsPage.tsx`: the former `App.tsx` (renamed; its own `<h1>`, `<main>` moved to the layout).
 - `frontend/src/pages/HomePage.tsx`, `NotFoundPage.tsx`: small pages; the 404 page does not echo the path.
@@ -25,7 +27,7 @@ http://localhost:5173/anything → "Page not found" with a link home. Reload on 
 (the dev server answers every path with `index.html`; the router picks the page in the browser).
 
 ## How to reuse in another project
-`npm install react-router`, then:
+`npm install react-router`. Copy the shape of `src/router/` (`paths.ts`, `routes.tsx`, `index.ts`), not the pages:
 ```tsx
 const router = createBrowserRouter([
   { path: '/', element: <Layout />, children: [
@@ -42,7 +44,9 @@ createRoot(el).render(<RouterProvider router={router} />); // RouterProvider fro
 - Headless Chrome (`--dump-dom`) on the same paths: the right `<h1>` on each page, `aria-current="page"` on the
   active link only, no active link on the 404 page.
 - `npm audit --omit=dev`: 0 vulnerabilities. New packages: `react-router`, `cookie`, `set-cookie-parser`.
-  Size: ~107 changed lines of code.
+  Size: ~115 changed lines of code.
+- Second commit (user's request): router moved from `src/app/` to `src/router/` (`index.ts`, `routes.tsx`,
+  `paths.ts`), layout to `src/layouts/`. Typecheck, lint, build and the headless Chrome check re-run: same results.
 
 ## Review
 - **security (low), postponed to step 17:** no `errorElement`, so React Router's default error screen shows the
@@ -52,8 +56,8 @@ createRoot(el).render(<RouterProvider router={router} />); // RouterProvider fro
   was corrected; aliasing to the production build is a "Known gaps" item for step 24 (same size, so no hurry).
 - **code (nit), fixed:** hovering the active link turned it gray (`tailwind-merge` keeps `hover:` next to the
   active color). Now `isActive ? 'text-blue-700' : 'text-gray-600 hover:text-gray-900'`.
-- **code (nit), left to the user:** CLAUDE.md's structure tree does not list `frontend/src/app/` (router + layout
-  glue). CLAUDE.md is the user's instruction file, so it was not edited in this PR.
+- **code (nit), left to the user:** CLAUDE.md's structure tree does not list the new frontend folders
+  (now `src/router/` and `src/layouts/`, after the second commit). CLAUDE.md is the user's instruction file, so it was not edited in this PR.
 
 ## Interview questions
 1. **Why does a single-page app return 200 for a URL that does not exist?** The server sends `index.html` for every
@@ -63,3 +67,6 @@ createRoot(el).render(<RouterProvider router={router} />); // RouterProvider fro
    (state lost, effects re-run). Module level means one instance for the app's lifetime.
 3. **Is hiding a nav link or a route a security measure?** No. The JavaScript bundle can be read by anyone and the
    API can be called directly; the server enforces authorization (step 12). Route guards (step 21) only improve the UX.
+4. **Why are the routes TypeScript objects and not JSON?** JSON cannot hold a component or a `lazy(() => import())`,
+   so it would need a string → component map checked only at runtime, and Vite could not split pages into chunks.
+   JSON routes only make sense when the server decides them (a CMS).

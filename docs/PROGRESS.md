@@ -55,7 +55,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 14 | Frontend setup | ✅ PR #32 | `frontend/`: Vite 7.3.7, React 19.3.1, Tailwind 4.3.4, TS 5.9 (3 tsconfigs), ESLint 9 + react-hooks 7, `@/` alias, `strictPort`, `lib/cn` (clsx + tailwind-merge) |
 | 15a | UI components (base) | ✅ PR #33 | `components/ui/` = Button, Spinner, Badge, Card, Alert + `index.ts` + README; App.tsx is a temporary showcase |
 | 15b | Form fields | ✅ PR #34 | `FormField` (render prop, `useId`), `Input`, `Textarea`, `Select`, `control-classes.ts`; showcase card in App.tsx |
-| 16a | Router + layout + 404 | 🔍 `pr/16a-router-layout` | `react-router` 7.18.5, `app/router.tsx` (`createBrowserRouter`), `app/RootLayout.tsx` (`NavLink` + `Outlet`), `pages/` (Home, Components = old App.tsx, NotFound) |
+| 16a | Router + layout + 404 | 🔍 `pr/16a-router-layout` | `react-router` 7.18.5, `router/` (`index.ts`, `routes.tsx`, `paths.ts` = `PATHS`), `layouts/RootLayout.tsx` (`NavLink` + `Outlet`), `pages/` (Home, Components = old App.tsx, NotFound); second commit: `src/app/` → `src/router/` + `src/layouts/` |
 
 ## Decisions (and why)
 
@@ -562,8 +562,15 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Step 16 split (user's choice, 2026-11-18):** 16a = React Router + layout + 404 (routing), 16b =
   `lib/lazy-with-preload` + `React.lazy` + Suspense + preload on hover/focus (code splitting). One concept per PR.
 - **Router (step 16a):** package `react-router` 7 (v7 merged `react-router-dom` into it; `RouterProvider` is imported
-  from `react-router/dom`, which wires in `react-dom`). Data mode: `createBrowserRouter` at module level in
-  `src/app/router.tsx` (glue, like `src/app/` on the backend; not portable). One layout route (`RootLayout`: header +
+  from `react-router/dom`, which wires in `react-dom`). Data mode: `createBrowserRouter` at module level.
+  Folder `src/router/` (user's request, app glue, not portable): `index.ts` (creates `router`), `routes.tsx`
+  (`RouteObject[]` config), `paths.ts` (`PATHS` as const: every `<Link to>` / `navigate()` uses it, never a string).
+  Layouts live in `src/layouts/`. Routes are TS objects, NOT JSON (user asked): JSON cannot hold components or
+  `lazy(() => import())`, loses type checks; file-based routing was not chosen either (a different tool).
+  **Public / protected routes (user's request, built in step 21):** pathless layout routes in `routes.tsx`:
+  `GuestRoute` (login/register; logged-in users go to the dashboard), `ProtectedRoute` (not logged in →
+  `/login?redirectTo=…`), `RequireRole` nested inside it (admin pages); public pages stay plain children. Not added
+  before step 21: a "protected" group without a real guard would look safe and not be. One layout route (`RootLayout`: header +
   `NavLink`s + `<Outlet />`) with the pages as children, so the header stays mounted. `index: true` = `/`. Catch-all
   `path: '*'` INSIDE the layout renders `NotFoundPage` (navigation stays usable); it does not echo the path (same as
   the API's 404). Pages live in `src/pages/<Name>Page.tsx`. `NavLink` gets `end` (otherwise `/` is active on every URL)
