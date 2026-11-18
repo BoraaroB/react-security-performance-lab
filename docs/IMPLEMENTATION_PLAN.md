@@ -56,8 +56,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 15b | `pr/15b-form-fields` | FormField, Input, Textarea, Select (label, error, `aria-invalid`, `aria-describedby`) | `components/ui/*` | – | ✅ |
 | 16a | `pr/16a-router-layout` | React Router, shared layout with navigation, 404 page | – | P2 | ✅ |
 | 16b | `pr/16b-lazy-loading` | `React.lazy` + Suspense for pages, preload on hover/focus | `lib/lazy-with-preload` | P2 | ✅ |
-| 17a | `pr/17a-route-errors` | Router `errorElement` (`RouteErrorPage`): no message or stack, chunk-load errors get their own text, "Reload" button, header stays for page errors | – | P2 | 🔍 |
-| 17b | `pr/17b-error-boundary` | `ErrorBoundary` for parts of a page (fallback + reset), React 19 `onCaughtError`/`onUncaughtError` in `createRoot` (one place to log errors) | `components/feedback/ErrorBoundary` | DX | ⬜ |
+| 17a | `pr/17a-route-errors` | Router `errorElement` (`RouteErrorPage`): no message or stack, chunk-load errors get their own text, "Reload" button, header stays for page errors | – | P2 | ✅ |
+| 17b | `pr/17b-error-boundary` | `ErrorBoundary` for parts of a page (fallback + reset), React 19 `onCaughtError`/`onUncaughtError` in `createRoot` (one place to log errors) | `components/feedback/ErrorBoundary` | DX | 🔍 |
 | 17c | `pr/17c-toasts` | Toast system: `ToastProvider` + `useToast`, `aria-live`, auto-dismiss with timer cleanup | `components/feedback/Toast` | – | ⬜ |
 | 18 | `pr/18-http-client` | Fetch client: `ApiError`/`NetworkError`/`TimeoutError`, timeout, retry + backoff, abort, offline banner; shows the server's request ID in errors | `lib/http`, `hooks/useOnlineStatus` | S3, DX | ⬜ |
 | 19 | `pr/19-use-fetch` | `useFetch` with AbortController (no leaks), `ErrorState` with a retry button | `hooks/useFetch` | P3 | ⬜ |

@@ -1,4 +1,20 @@
+import { useState } from 'react';
+import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
 import { Alert, Badge, Button, Card, FormField, Input, Select, Spinner, Textarea } from '@/components/ui';
+
+// Demo for the error boundary: the click only sets state; the error is thrown during the next RENDER.
+// Throwing inside onClick itself would NOT be caught: boundaries only catch render errors.
+function BrokenWidget() {
+  const [isBroken, setIsBroken] = useState(false);
+  if (isBroken) {
+    throw new Error('BrokenWidget failed to render');
+  }
+  return (
+    <Button variant="danger" onClick={() => setIsBroken(true)}>
+      Break this widget
+    </Button>
+  );
+}
 
 // Showcase of the UI components (a living style guide), so changes to them can be checked by eye.
 export default function ComponentsPage() {
@@ -35,6 +51,23 @@ export default function ComponentsPage() {
       <Alert variant="error" title="Something went wrong">
         Request ID: 9f2c1a. Please try again.
       </Alert>
+
+      {/* Only this card is replaced on an error; the rest of the page keeps working. */}
+      <Card className="space-y-2">
+        <h2 className="font-medium text-gray-900">Error boundary</h2>
+        <ErrorBoundary
+          fallback={({ reset }) => (
+            // The error's message is not shown: it can reveal internals. It is logged in main.tsx.
+            <Alert variant="error" title="This widget could not be shown">
+              <Button className="mt-2" onClick={reset}>
+                Try again
+              </Button>
+            </Alert>
+          )}
+        >
+          <BrokenWidget />
+        </ErrorBoundary>
+      </Card>
     </div>
   );
 }
