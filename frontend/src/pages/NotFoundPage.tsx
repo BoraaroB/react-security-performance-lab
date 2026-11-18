@@ -2,7 +2,7 @@ import { Link } from 'react-router';
 import { PATHS } from '@/router/paths';
 
 // Shown for every unknown URL. The path is not echoed back (same rule as the API's 404).
-export function NotFoundPage() {
+export default function NotFoundPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-semibold text-gray-900">Page not found</h1>

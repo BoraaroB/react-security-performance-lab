@@ -1,7 +1,7 @@
 import { Alert, Badge, Button, Card, FormField, Input, Select, Spinner, Textarea } from '@/components/ui';
 
 // Showcase of the UI components (a living style guide), so changes to them can be checked by eye.
-export function ComponentsPage() {
+export default function ComponentsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-gray-900">UI components</h1>
