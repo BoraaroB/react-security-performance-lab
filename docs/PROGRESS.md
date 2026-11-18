@@ -5,10 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 13c (OAuth callback, PR #31). Phase A (Express backend) is complete.
-- **In review:** step 14 (`pr/14-frontend-setup`): Phase B starts; `frontend/` created (Vite 7 + React 19 + TS + Tailwind 4)
-- **Next:** step 15 (`pr/15-ui-components`): Button, FormField, Input, ... in `src/components/ui/`, using `lib/cn`.
-  Probably split into 15a/15b (nine components will not fit ~150 lines): ask the user.
+- **Last merged:** 14 (frontend setup, PR #32). Phase A (Express backend) is complete.
+- **In review:** step 15a (`pr/15a-ui-components`): Button, Spinner, Badge, Card, Alert in `src/components/ui/`
+- **Next:** step 15b (`pr/15b-form-fields`): FormField, Input, Textarea, Select in the same `components/ui/` module.
 
 ## How to resume after `/clear`
 
@@ -53,7 +52,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 13a | OAuth core | ✅ PR #29 | `lib/oauth` (`createOAuthClient` → `createAuthorizationRequest`, `exchangeCode`; `isSameState`) |
 | 13b | GitHub login start | ✅ PR #30 | `API_ORIGIN`, `GITHUB_CLIENT_ID`/`SECRET`, `oauthClients` Map + `oauthCallbackPath()` in `security.ts`, generic `oauth.controller.ts`, `__Secure-oauth_<provider>` cookie; second commit: generic providers |
 | 13c | GitHub login callback | ✅ PR #31 | `fetchGithubProfile` + `GITHUB_SCOPES` + `OAuthProfile` in `lib/oauth`; password-less users + `userIdsByOAuthIdentity`; `loginWithOAuth`; `FRONTEND_ORIGIN`; `GET /api/auth/oauth/github/callback` |
-| 14 | Frontend setup | 🔍 `pr/14-frontend-setup` | `frontend/`: Vite 7.3.7, React 19.3.1, Tailwind 4.3.4, TS 5.9 (3 tsconfigs), ESLint 9 + react-hooks 7, `@/` alias, `strictPort`, `lib/cn` (clsx + tailwind-merge) |
+| 14 | Frontend setup | ✅ PR #32 | `frontend/`: Vite 7.3.7, React 19.3.1, Tailwind 4.3.4, TS 5.9 (3 tsconfigs), ESLint 9 + react-hooks 7, `@/` alias, `strictPort`, `lib/cn` (clsx + tailwind-merge) |
+| 15a | UI components (base) | 🔍 `pr/15a-ui-components` | `components/ui/` = Button, Spinner, Badge, Card, Alert + `index.ts` + README; App.tsx is a temporary showcase |
 
 ## Decisions (and why)
 
@@ -529,6 +529,23 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   reads `.env.[mode]` and `.env.[mode].local`.
 - **`lib/cn` (step 14):** `cn(...inputs)` = `twMerge(clsx(inputs))`, re-exports `ClassValue`. `tailwind-merge@3`
   is for Tailwind 4 (v2 for Tailwind 3).
+- **Step 15 split (user's choice, 2026-11-18):** 15a = Button, Spinner, Badge, Card, Alert; 15b = FormField, Input,
+  Textarea, Select. Step 17 stays as planned (user declined adding a global `unhandledrejection` toast; ErrorBoundary
+  does not catch async/event-handler errors, network errors are handled by the http client in 18 and `useFetch` in 19).
+- **`components/ui` is ONE portable module (step 15a, deviation from the `portable-module` skill's
+  `components/<group>/<Component>/` layout):** flat files (`Button.tsx`, ...) + one `index.ts` + one `README.md`.
+  A folder + index + README per component would be ~27 files for 9 tiny components. Copy the whole folder + `lib/cn`.
+  Components import `cn` as `@/lib/cn` (needs the alias) and each other relatively (`./Spinner`).
+- **UI component conventions (step 15a):** props = `ComponentProps<'element'>` + own props, rest spread onto the
+  element (so `ref`, `aria-*`, `onClick` just work; React 19 `ref` as a prop, no `forwardRef`); `className` goes LAST
+  into `cn()` so the caller wins. Variants are `as const` objects (`VARIANT_CLASSES`), the prop type is
+  `keyof typeof` them (one source, like `ROLES` on the backend). Prop name is always `variant`. Button defaults to
+  `type="button"`, `isLoading` disables it + `aria-busy` + Spinner. Alert: `role="alert"` for `error`, `role="status"`
+  otherwise; `title` is a visible heading (HTML `title` omitted from the props). Colors are plain Tailwind palette
+  classes (no `@theme` tokens, no dark mode yet). Everything renders as React text. Props types use
+  `HtmlProps<'tag'>` (`types.ts`: `ComponentProps` minus `dangerouslySetInnerHTML`; found in review), so raw HTML
+  through a UI component does not compile; 15b uses it too. Spinner has no `children` (only `label`) and is
+  `aria-hidden` inside a Button. Disabling a loading Button is UX only, not duplicate protection.
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
