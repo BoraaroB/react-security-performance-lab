@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** side branch `chore/sonner-toasts` (PR #40; sonner instead of the custom toasts). Phase A (Express backend) is complete.
-- **In review:** side branch `feat/sticky-header`: sticky, see-through (blurred) header + `scroll-padding-top` (user's request).
-- **Next:** step 18 (`pr/18-http-client`): `lib/http` (`ApiError`/`NetworkError`/`TimeoutError`, timeout, retry, abort) + `hooks/useOnlineStatus`. Likely needs a split (18a, 18b, ...): ask the user.
+- **Last merged:** side branch `feat/sticky-header` (PR #41). Phase A (Express backend) is complete.
+- **In review:** step 18a (`pr/18a-http-client`): `lib/http` core (typed errors, timeout, abort, API-origin check) + `src/config/http.ts`.
+- **Next:** step 18b (`pr/18b-http-retry`): retry + backoff in `lib/http`. Then 18c (`useOnlineStatus` + offline banner).
 
 ## How to resume after `/clear`
 
@@ -61,7 +61,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 17b | ErrorBoundary + root error hooks | ✅ PR #38 | `components/feedback/ErrorBoundary/` (class, `fallback({ error, reset })`, no logging), `createRoot(…, { onCaughtError, onUncaughtError })` in `main.tsx`, `BrokenWidget` demo card on `/components` |
 | 17c | Toasts | ✅ PR #39 | `components/feedback/Toast/` (`ToastProvider` + `useToast()` → `showToast({ message, variant? })`, `ToastItem` with timer cleanup), provider in `main.tsx`, demo buttons on `/components` |
 | – | Sonner toasts | ✅ PR #40 | `components/feedback/Toast/` deleted; `sonner` 2.0.8, `<Toaster richColors closeButton />` in `main.tsx`, demo calls `toast.info/success/error`; old module kept as reference in `src/examples/custom-toast/`; CLAUDE.md updated |
-| – | Sticky header | 🔍 `feat/sticky-header` | `RootLayout` header `sticky top-0 z-10`, `bg-white/70` + `backdrop-blur-md` (fallback `bg-white/95`), `html { scroll-padding-top: 4rem }` in `index.css` |
+| – | Sticky header | ✅ PR #41 (`feat/sticky-header`) | `RootLayout` header `sticky top-0 z-10`, `bg-white/70` + `backdrop-blur-md` (fallback `bg-white/95`), `html { scroll-padding-top: 4rem }` in `index.css` |
+| 18a | HTTP client core | 🔍 `pr/18a-http-client` | `lib/http` (`createHttpClient({ apiOrigin })` → `request<T>`; `ApiError`/`NetworkError`/`TimeoutError`), `src/config/http.ts` (`VITE_API_ORIGIN`), demo card on `/components` |
 
 ## Decisions (and why)
 
@@ -668,6 +669,30 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   headless Chrome, not in Firefox/Safari). If the header grows (e.g. a
   user menu in step 21), check that 4rem is still more than its height. No ancestor of the header may get
   `overflow: hidden/auto`, or `sticky` stops working.
+- **Step 18 split (user's choice, 2026-11-18):** 18a = `lib/http` core, 18b = retry + backoff, 18c = `hooks/useOnlineStatus` + offline banner.
+- **HTTP client (step 18a):** `lib/http` (no npm packages, no adapter: plain `fetch`). `createHttpClient({ apiOrigin, timeoutMs = 10_000, credentials = 'same-origin' })`
+  → `{ request<T>(path, { method?, body?, signal?, timeoutMs? }) }`. `apiOrigin` must be an exact origin (checked at creation);
+  every `path` is resolved with `new URL(path, apiOrigin)` and a result on another origin throws (`//evil.com`, absolute
+  URLs), and `redirect: 'error'` refuses redirects (the check covers only the first hop; a redirect becomes a
+  `NetworkError`): the body and the headers the client adds (the access token and CSRF token from step 21) never reach
+  another host. It is NOT about cookies: the browser picks cookies by the target host anyway (18a review). A GET with a
+  `body` throws a plain `Error` (fetch would reject it, and it would look like a `NetworkError`).
+  `AbortSignal.any` is called before the `try`, so a missing API is not reported as a `NetworkError` either. Timeout = `AbortSignal.timeout` combined with the
+  caller's signal by `AbortSignal.any` (Chrome 116+, Firefox 124+, Safari 17.4+); it also covers reading the body.
+  Errors: caller abort → the `AbortError` is rethrown unchanged (not a failure to show); timeout → `TimeoutError`; any
+  other fetch failure → `NetworkError` (the browser does not say whether it was offline, DNS, or CORS). Status ≥ 400
+  → `ApiError` from our error body; missing fields fall back (`HTTP_<status>`, generic message, `X-Request-Id` header
+  as `requestId`), so a proxy's HTML 502 still gives an `ApiError`. A 2xx body that is not JSON → `ApiError`
+  `INVALID_RESPONSE`; an empty body → `undefined` (204). The result is not validated at runtime (`T` is trusted).
+  The body is read with `text()` then `JSON.parse` (one place for both cases). No custom headers option yet (step 21 adds
+  `Authorization` and `X-CSRF-Token`), `credentials` stays `'same-origin'` in the app until step 21 needs cookies.
+  UI rule: show a text mapped from `error.code` (+ `requestId`), never `error.message`. Errors use sonner's `id` + `duration: Infinity` rule.
+- **Frontend env (step 18a):** glue lives in `src/config/` (portable-module skill). `src/config/http.ts` creates the
+  one client from `VITE_API_ORIGIN`; default `http://localhost:4000` only in dev (`import.meta.env.DEV`); a production
+  build without it throws when the module loads (no silent calls to localhost), and so does a plain `http://` origin
+  other than `localhost` (same rule as the API's `CORS_ORIGINS`; tokens must not cross the network unencrypted). `VITE_*` values are public (in the
+  bundle): never secrets. Typed in `src/vite-env.d.ts`; `frontend/.env.example` documents it. Only the lazy
+  `ComponentsPage` imports the client today, so the throw would show the route error page there.
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
@@ -683,7 +708,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - `backend-express/.env` exists locally (git-ignored). It needs `DATA_ENCRYPTION_KEY` (07a), `JWT_SECRET` (08) and `CSRF_SECRET` (11):
   run `node scripts/setup-env.mjs` (it fills empty secrets and keeps everything else).
   For GitHub login (13b+), the user adds `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` from their own GitHub OAuth App.
-- `frontend/` needs no `.env` yet. `backend-nest/` and the root `package.json` do not exist on purpose
+- `frontend/` needs no `.env` in dev (`VITE_API_ORIGIN` defaults to `http://localhost:4000`). A production build
+  (`npm run build` → `vite preview`, step 23) needs `VITE_API_ORIGIN=http://localhost:4000` set, or `config/http.ts` throws. `backend-nest/` and the root `package.json` do not exist on purpose
   (Nest in step 26, root scripts in step 30).
 
 ## Known gaps (fixed in later steps)
@@ -826,3 +852,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   2 days old at install time). Dev-only (`npm audit --omit=dev` is clean) and reachable only through glob patterns we
   write. Re-check before step 35: its CI runs `npm audit --audit-level=high`, which this picomatch advisory would fail.
   Upgrade typescript-eslint once 8.73+ is two weeks old (with `--before`).
+- **No runtime check of API responses (18a):** `request<T>` trusts the server's JSON shape; a changed API gives a
+  wrong type at runtime, not a clear error. A Zod schema per call (step 20 adds Zod to the frontend) would fix it.
+- **`AbortSignal.any` needs Safari 17.4+ (18a):** older browsers fail every request with a `TypeError` (`AbortSignal.any is not a function`). Accepted (no polyfill, no `browserslist` target yet).
+- **`ApiError.details` items are trusted (18a code review):** only `Array.isArray` is checked, not that each item is
+  `{ field: string, message: string }`. Step 20 maps them to form fields: skip items without string `field`/`message`
+  there (or validate with Zod), so a proxy's odd body cannot crash the form.
