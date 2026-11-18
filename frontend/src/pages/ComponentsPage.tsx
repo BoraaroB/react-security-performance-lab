@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
+import { useToast } from '@/components/feedback/Toast';
 import { Alert, Badge, Button, Card, FormField, Input, Select, Spinner, Textarea } from '@/components/ui';
 
 // Demo for the error boundary: the click only sets state; the error is thrown during the next RENDER.
@@ -18,6 +19,8 @@ function BrokenWidget() {
 
 // Showcase of the UI components (a living style guide), so changes to them can be checked by eye.
 export default function ComponentsPage() {
+  const showToast = useToast();
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-gray-900">UI components</h1>
@@ -51,6 +54,18 @@ export default function ComponentsPage() {
       <Alert variant="error" title="Something went wrong">
         Request ID: 9f2c1a. Please try again.
       </Alert>
+
+      <Card className="flex flex-wrap items-center gap-2">
+        <Button variant="secondary" onClick={() => showToast({ message: 'Changes saved' })}>
+          Info toast
+        </Button>
+        <Button variant="secondary" onClick={() => showToast({ message: 'Post deleted', variant: 'success' })}>
+          Success toast
+        </Button>
+        <Button variant="secondary" onClick={() => showToast({ message: 'Could not save the post', variant: 'error' })}>
+          Error toast
+        </Button>
+      </Card>
 
       {/* Only this card is replaced on an error; the rest of the page keeps working. */}
       <Card className="space-y-2">
