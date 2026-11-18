@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 16a (router + layout + 404, PR #35). Phase A (Express backend) is complete.
-- **In review:** step 16b (`pr/16b-lazy-loading`): `lib/lazy-with-preload`, lazy pages + Suspense, preload on hover/focus.
-- **Next:** step 17 (`pr/17-error-handling-ui`): ErrorBoundary, route and chunk-load errors, toast system, React 19 `onCaughtError`/`onUncaughtError`.
+- **Last merged:** 16b (lazy pages + preload, PR #36). Phase A (Express backend) is complete.
+- **In review:** step 17a (`pr/17a-route-errors`): router `errorElement` (`RouteErrorPage`), chunk-load errors, "Reload" button.
+- **Next:** step 17b (`pr/17b-error-boundary`): `components/feedback/ErrorBoundary` + React 19 `onCaughtError`/`onUncaughtError`.
 
 ## How to resume after `/clear`
 
@@ -56,7 +56,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 15a | UI components (base) | ✅ PR #33 | `components/ui/` = Button, Spinner, Badge, Card, Alert + `index.ts` + README; App.tsx is a temporary showcase |
 | 15b | Form fields | ✅ PR #34 | `FormField` (render prop, `useId`), `Input`, `Textarea`, `Select`, `control-classes.ts`; showcase card in App.tsx |
 | 16a | Router + layout + 404 | ✅ PR #35 | `react-router` 7.18.5, `router/` (`index.ts`, `routes.tsx`, `paths.ts` = `PATHS`), `layouts/RootLayout.tsx` (`NavLink` + `Outlet`), `pages/` (Home, Components = old App.tsx, NotFound); second commit: `src/app/` → `src/router/` + `src/layouts/` |
-| 16b | Lazy pages + preload | 🔍 `pr/16b-lazy-loading` | `lib/lazy-with-preload` (`lazyWithPreload(load)` → lazy component + `preload()`), `router/lazy-pages.ts` (only Components), `Suspense` in `RootLayout`; second commit: no own promise cache, Home + 404 eager |
+| 16b | Lazy pages + preload | ✅ PR #36 | `lib/lazy-with-preload` (`lazyWithPreload(load)` → lazy component + `preload()`), `router/lazy-pages.ts` (only Components), `Suspense` in `RootLayout`; second commit: no own promise cache, Home + 404 eager |
+| 17a | Route errors | 🔍 `pr/17a-route-errors` | `pages/RouteErrorPage.tsx` (`useRouteError`, `CHUNK_LOAD_ERROR` regex, Reload + home link), two `errorElement`s in `routes.tsx` (pathless route around the pages + the layout route) |
 
 ## Decisions (and why)
 
@@ -577,7 +578,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   the API's 404). Pages live in `src/pages/<Name>Page.tsx`. `NavLink` gets `end` (otherwise `/` is active on every URL)
   and sets `aria-current="page"` itself. Router's own `lazy` route property was not used: the plan asks for
   `React.lazy` + Suspense (16b). No `errorElement` yet: a render error shows React Router's default error screen
-  (with the stack, see Known gaps) until step 17. The showcase moved from `App.tsx` to `/components` (kept as a living style guide).
+  (with the stack) until step 17a added the `errorElement`. The showcase moved from `App.tsx` to `/components` (kept as a living style guide).
 - **Lazy pages (step 16b):** `lib/lazy-with-preload` (no adapter; only `react`): `lazyWithPreload(load)` returns
   `React.lazy(load)` + `preload(): void` = `load().catch(() => {})`. No own promise cache (second commit, user's
   review: the first version cached the promise and reset it on failure): the browser's module map already downloads
@@ -599,6 +600,18 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   in a transition, so after the first page the old page stays visible until the new chunk arrives (the spinner shows
   mostly on the first load). Nav links preload on `onMouseEnter` + `onFocus`.
   New links to lazy pages (e.g. in 20/21) should preload the same way. Build: main file 349 → 347 kB.
+- **Step 17 split (user's choice, 2026-11-18):** 17a = router `errorElement` + chunk-load errors, 17b =
+  `components/feedback/ErrorBoundary` + React 19 `onCaughtError`/`onUncaughtError`, 17c = toast system.
+- **Route errors (step 17a):** `src/pages/RouteErrorPage.tsx` (app page, not portable: uses `PATHS` and the router).
+  Two `errorElement`s in `routes.tsx`: a pathless child route (no URL, only a boundary) wraps every page, so a page
+  error renders inside `<main>` and the header stays; the layout route has its own one (wrapped in `<main>` with the
+  page padding) for errors in `RootLayout` itself. The page never shows `error.message` or the stack (React Router
+  logs the error to the console). A chunk-load error is recognized by the browser's message (`CHUNK_LOAD_ERROR`
+  regex: Chrome, Firefox, Safari, Vite's "Unable to preload CSS"; inline, not a `lib` module, one call site) and only
+  changes the text. Actions: "Reload the page" (`window.location.reload()`: `React.lazy` caches a failed import, so only
+  a full reload retries) and a home `Link` (React Router resets its boundary when the location changes; checked in
+  headless Chrome). No automatic reload (it could loop when the server is down; Vite's `vite:preloadError` event was not
+  used for that reason). No `isRouteErrorResponse` branch: there are no loaders/actions that throw responses yet.
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
@@ -725,11 +738,12 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   esbuild in `frontend/` (esbuild's binary comes from an optional platform package, not from its install script).
 - **Soft 404 (16a):** the SPA answers every unknown path with `index.html` and status 200; the 404 is only rendered
   in the browser. Fine for this app (no SEO); the nginx config in step 32 could return 404 for unknown paths.
-- **Router's default error screen shows the stack (16a review → step 17):** without an `errorElement`, React Router's
-  built-in screen renders `error.message`, `<pre>{stack}</pre>` and a "Hey developer" hint for any render error, in
-  production builds too (see the next gap). Since 16b, a lazy page whose chunk fails to load (offline, or a deploy
-  removed the old file) also ends there, replacing the whole layout including the header. Low risk (the user sees only their own errors, the bundle is public
-  anyway), but it breaks the "no stack traces to the user" rule. Step 17 adds the `errorElement`.
+- **Old frontend tabs after a deploy (17a):** a tab opened before a deploy asks for chunk files the new deploy removed;
+  the user sees "This page could not be loaded" and must click Reload. Keeping the previous deploy's `assets/` for a
+  while (step 32, nginx) would avoid it. Step 32 should also answer a missing `/assets/*` file with 404, not the SPA's
+  `index.html`: given `index.html`, Safari may report a MIME-type error that `CHUNK_LOAD_ERROR` does not match (17a review, untested),
+  so the user would see the generic text instead (Reload still works). Errors in event handlers and async code are not caught by `errorElement`
+  (handled by the http client in 18, `useFetch` in 19, toasts in 17c).
 - **React Router ships its development build (16a code review → step 24):** `react-router` 7's `package.json`
   `exports` has no `production` condition; every condition points to `dist/development/`, so Vite bundles the dev
   build (dev warnings on, `console.error` on render errors). The size is the same as the production build. Step 24

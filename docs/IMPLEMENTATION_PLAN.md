@@ -55,8 +55,10 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 15a | `pr/15a-ui-components` | Button, Spinner, Badge, Card, Alert (React 19 `ref` as a prop) | `components/ui/*` | – | ✅ |
 | 15b | `pr/15b-form-fields` | FormField, Input, Textarea, Select (label, error, `aria-invalid`, `aria-describedby`) | `components/ui/*` | – | ✅ |
 | 16a | `pr/16a-router-layout` | React Router, shared layout with navigation, 404 page | – | P2 | ✅ |
-| 16b | `pr/16b-lazy-loading` | `React.lazy` + Suspense for pages, preload on hover/focus | `lib/lazy-with-preload` | P2 | 🔍 |
-| 17 | `pr/17-error-handling-ui` | ErrorBoundary, route and chunk-load errors, toast system, React 19 `onCaughtError`/`onUncaughtError` | `components/feedback/*` | – | ⬜ |
+| 16b | `pr/16b-lazy-loading` | `React.lazy` + Suspense for pages, preload on hover/focus | `lib/lazy-with-preload` | P2 | ✅ |
+| 17a | `pr/17a-route-errors` | Router `errorElement` (`RouteErrorPage`): no message or stack, chunk-load errors get their own text, "Reload" button, header stays for page errors | – | P2 | 🔍 |
+| 17b | `pr/17b-error-boundary` | `ErrorBoundary` for parts of a page (fallback + reset), React 19 `onCaughtError`/`onUncaughtError` in `createRoot` (one place to log errors) | `components/feedback/ErrorBoundary` | DX | ⬜ |
+| 17c | `pr/17c-toasts` | Toast system: `ToastProvider` + `useToast`, `aria-live`, auto-dismiss with timer cleanup | `components/feedback/Toast` | – | ⬜ |
 | 18 | `pr/18-http-client` | Fetch client: `ApiError`/`NetworkError`/`TimeoutError`, timeout, retry + backoff, abort, offline banner; shows the server's request ID in errors | `lib/http`, `hooks/useOnlineStatus` | S3, DX | ⬜ |
 | 19 | `pr/19-use-fetch` | `useFetch` with AbortController (no leaks), `ErrorState` with a retry button | `hooks/useFetch` | P3 | ⬜ |
 | 20 | `pr/20-forms` | react-hook-form + Zod, mapping server errors to fields, login and register forms; "Log in with GitHub" link (a plain `<a href>`, not fetch) and the `/login?error=OAUTH_FAILED \| OAUTH_DENIED \| OAUTH_EMAIL_TAKEN` messages (from 13c) | `lib/forms` | S1 | ⬜ |
