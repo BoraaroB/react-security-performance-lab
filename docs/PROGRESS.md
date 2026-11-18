@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 15a (UI components, PR #33). Phase A (Express backend) is complete.
-- **In review:** step 15b (`pr/15b-form-fields`): FormField, Input, Textarea, Select in `src/components/ui/`
-- **Next:** step 16 (`pr/16-router-lazy-loading`): React Router, `React.lazy` + Suspense, preload on hover, layout, 404.
+- **Last merged:** 15b (form fields, PR #34). Phase A (Express backend) is complete.
+- **In review:** step 16a (`pr/16a-router-layout`): React Router, `RootLayout` with navigation, 404 page.
+- **Next:** step 16b (`pr/16b-lazy-loading`): `lib/lazy-with-preload`, `React.lazy` + Suspense for pages, preload on hover/focus.
 
 ## How to resume after `/clear`
 
@@ -54,7 +54,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 13c | GitHub login callback | ✅ PR #31 | `fetchGithubProfile` + `GITHUB_SCOPES` + `OAuthProfile` in `lib/oauth`; password-less users + `userIdsByOAuthIdentity`; `loginWithOAuth`; `FRONTEND_ORIGIN`; `GET /api/auth/oauth/github/callback` |
 | 14 | Frontend setup | ✅ PR #32 | `frontend/`: Vite 7.3.7, React 19.3.1, Tailwind 4.3.4, TS 5.9 (3 tsconfigs), ESLint 9 + react-hooks 7, `@/` alias, `strictPort`, `lib/cn` (clsx + tailwind-merge) |
 | 15a | UI components (base) | ✅ PR #33 | `components/ui/` = Button, Spinner, Badge, Card, Alert + `index.ts` + README; App.tsx is a temporary showcase |
-| 15b | Form fields | 🔍 `pr/15b-form-fields` | `FormField` (render prop, `useId`), `Input`, `Textarea`, `Select`, `control-classes.ts`; showcase card in App.tsx |
+| 15b | Form fields | ✅ PR #34 | `FormField` (render prop, `useId`), `Input`, `Textarea`, `Select`, `control-classes.ts`; showcase card in App.tsx |
+| 16a | Router + layout + 404 | 🔍 `pr/16a-router-layout` | `react-router` 7.18.5, `app/router.tsx` (`createBrowserRouter`), `app/RootLayout.tsx` (`NavLink` + `Outlet`), `pages/` (Home, Components = old App.tsx, NotFound) |
 
 ## Decisions (and why)
 
@@ -558,6 +559,17 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   the red border uses `aria-[invalid=true]:` so the look follows the accessibility state. Controls use `focus:`
   (not `focus-visible:`) so a clicked text field shows its ring. No `children` on Input/Textarea. Select is native
   (fixed `h-10`; `className="h-auto"` for `multiple`/`size`). Placeholder color `gray-500` (WCAG contrast; found in review).
+- **Step 16 split (user's choice, 2026-11-18):** 16a = React Router + layout + 404 (routing), 16b =
+  `lib/lazy-with-preload` + `React.lazy` + Suspense + preload on hover/focus (code splitting). One concept per PR.
+- **Router (step 16a):** package `react-router` 7 (v7 merged `react-router-dom` into it; `RouterProvider` is imported
+  from `react-router/dom`, which wires in `react-dom`). Data mode: `createBrowserRouter` at module level in
+  `src/app/router.tsx` (glue, like `src/app/` on the backend; not portable). One layout route (`RootLayout`: header +
+  `NavLink`s + `<Outlet />`) with the pages as children, so the header stays mounted. `index: true` = `/`. Catch-all
+  `path: '*'` INSIDE the layout renders `NotFoundPage` (navigation stays usable); it does not echo the path (same as
+  the API's 404). Pages live in `src/pages/<Name>Page.tsx`. `NavLink` gets `end` (otherwise `/` is active on every URL)
+  and sets `aria-current="page"` itself. Router's own `lazy` route property was not used: the plan asks for
+  `React.lazy` + Suspense (16b). No `errorElement` yet: a render error shows React Router's default error screen
+  (with the stack, see Known gaps) until step 17. The showcase moved from `App.tsx` to `/components` (kept as a living style guide).
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
@@ -682,6 +694,19 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Nest (step 28):** `CsrfGuard` must call the same `core.ts` and apply only to cookie routes, not `/api/mobile/*`.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts, and so do Vite and
   esbuild in `frontend/` (esbuild's binary comes from an optional platform package, not from its install script).
+- **Soft 404 (16a):** the SPA answers every unknown path with `index.html` and status 200; the 404 is only rendered
+  in the browser. Fine for this app (no SEO); the nginx config in step 32 could return 404 for unknown paths.
+- **Router's default error screen shows the stack (16a review → step 17):** without an `errorElement`, React Router's
+  built-in screen renders `error.message`, `<pre>{stack}</pre>` and a "Hey developer" hint for any render error, in
+  production builds too (see the next gap). Low risk (the user sees only their own errors, the bundle is public
+  anyway), but it breaks the "no stack traces to the user" rule. Step 17 adds the `errorElement`.
+- **React Router ships its development build (16a code review → step 24):** `react-router` 7's `package.json`
+  `exports` has no `production` condition; every condition points to `dist/development/`, so Vite bundles the dev
+  build (dev warnings on, `console.error` on render errors). The size is the same as the production build. Step 24
+  (bundle analysis) can alias `react-router` to `dist/production/` in `vite.config.ts` if it is worth it.
+- **No focus management on route change (16a):** after client-side navigation, focus stays on the clicked link and
+  the document `<title>` does not change, so screen-reader users are not told that the page changed. Fix idea: per-page
+  `<title>` (React 19 hoists it into `<head>`) and moving focus to the page `<h1>`. Not planned yet.
 - **Frontend dev-tool advisories (14):** `npm audit` in `frontend/` reports picomatch ReDoS (high, via Vite/tinyglobby,
   no fixed version published yet) and minimatch (moderate, via typescript-eslint 8.72.x; fixed in 8.73.0, which was
   2 days old at install time). Dev-only (`npm audit --omit=dev` is clean) and reachable only through glob patterns we
