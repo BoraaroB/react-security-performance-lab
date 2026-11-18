@@ -1,11 +1,12 @@
 import type { RouteObject } from 'react-router';
 import { RootLayout } from '@/layouts/RootLayout';
-import { ComponentsPage } from '@/pages/ComponentsPage';
 import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
+import { ComponentsPage } from '@/router/lazy-pages';
 import { PATHS } from '@/router/paths';
 
-// Route config: plain objects, not JSON, so pages stay type-checked and can be lazy loaded (16b).
+// Route config: plain objects, not JSON, so pages stay type-checked and can be lazy loaded.
+// The layout, home and 404 pages are NOT lazy: nearly every visit needs them for the first screen.
 // Public pages only for now; step 21 adds the ProtectedRoute / GuestRoute / RequireRole groups.
 export const routes: RouteObject[] = [
   {

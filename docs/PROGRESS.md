@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 15b (form fields, PR #34). Phase A (Express backend) is complete.
-- **In review:** step 16a (`pr/16a-router-layout`): React Router, `RootLayout` with navigation, 404 page.
-- **Next:** step 16b (`pr/16b-lazy-loading`): `lib/lazy-with-preload`, `React.lazy` + Suspense for pages, preload on hover/focus.
+- **Last merged:** 16a (router + layout + 404, PR #35). Phase A (Express backend) is complete.
+- **In review:** step 16b (`pr/16b-lazy-loading`): `lib/lazy-with-preload`, lazy pages + Suspense, preload on hover/focus.
+- **Next:** step 17 (`pr/17-error-handling-ui`): ErrorBoundary, route and chunk-load errors, toast system, React 19 `onCaughtError`/`onUncaughtError`.
 
 ## How to resume after `/clear`
 
@@ -55,7 +55,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 14 | Frontend setup | ✅ PR #32 | `frontend/`: Vite 7.3.7, React 19.3.1, Tailwind 4.3.4, TS 5.9 (3 tsconfigs), ESLint 9 + react-hooks 7, `@/` alias, `strictPort`, `lib/cn` (clsx + tailwind-merge) |
 | 15a | UI components (base) | ✅ PR #33 | `components/ui/` = Button, Spinner, Badge, Card, Alert + `index.ts` + README; App.tsx is a temporary showcase |
 | 15b | Form fields | ✅ PR #34 | `FormField` (render prop, `useId`), `Input`, `Textarea`, `Select`, `control-classes.ts`; showcase card in App.tsx |
-| 16a | Router + layout + 404 | 🔍 `pr/16a-router-layout` | `react-router` 7.18.5, `router/` (`index.ts`, `routes.tsx`, `paths.ts` = `PATHS`), `layouts/RootLayout.tsx` (`NavLink` + `Outlet`), `pages/` (Home, Components = old App.tsx, NotFound); second commit: `src/app/` → `src/router/` + `src/layouts/` |
+| 16a | Router + layout + 404 | ✅ PR #35 | `react-router` 7.18.5, `router/` (`index.ts`, `routes.tsx`, `paths.ts` = `PATHS`), `layouts/RootLayout.tsx` (`NavLink` + `Outlet`), `pages/` (Home, Components = old App.tsx, NotFound); second commit: `src/app/` → `src/router/` + `src/layouts/` |
+| 16b | Lazy pages + preload | 🔍 `pr/16b-lazy-loading` | `lib/lazy-with-preload` (`lazyWithPreload(load)` → lazy component + `preload()`), `router/lazy-pages.ts` (only Components), `Suspense` in `RootLayout`; second commit: no own promise cache, Home + 404 eager |
 
 ## Decisions (and why)
 
@@ -577,6 +578,27 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   and sets `aria-current="page"` itself. Router's own `lazy` route property was not used: the plan asks for
   `React.lazy` + Suspense (16b). No `errorElement` yet: a render error shows React Router's default error screen
   (with the stack, see Known gaps) until step 17. The showcase moved from `App.tsx` to `/components` (kept as a living style guide).
+- **Lazy pages (step 16b):** `lib/lazy-with-preload` (no adapter; only `react`): `lazyWithPreload(load)` returns
+  `React.lazy(load)` + `preload(): void` = `load().catch(() => {})`. No own promise cache (second commit, user's
+  review: the first version cached the promise and reset it on failure): the browser's module map already downloads
+  a module once per page and makes every later `import()` of it wait for the same download (HTML spec; checked in
+  headless Chrome with 600 ms latency: hover + immediate click = one request). A failed preload is ignored; the
+  render calls `load()` itself (whether a browser re-downloads a failed module differs between browsers). A failed
+  RENDER is cached by `React.lazy` forever: step 17's error boundary must handle chunk-load errors (offer a reload).
+  `preload` is only a speed-up (the plan asks for it); plain `React.lazy` works without it. On touch screens a tap
+  fires `mouseenter` right before the click, so there is no gain there, and no harm.
+  **Which pages are lazy (second commit, user's review):** eager (in the main file) = what nearly every visit needs
+  for the first screen: `RootLayout`, `HomePage` (when lazy, a cold visit to `/` waited for the main file and THEN
+  requested `HomePage-*.js`: a waterfall, to save 0.6 kB) and `NotFoundPage` (a 0.4 kB fallback; a lazy 404 could
+  itself fail to load after a deploy). Lazy = everything else, especially big pages and pages only some users see
+  (admin, demos); today only `ComponentsPage`. Login (the first screen for logged-out users) is decided in step 20.
+  Lazy pages are `export default` (what `React.lazy` expects); eager pages and the rest of the app keep named
+  exports. Lazy page objects live in `src/router/lazy-pages.ts`, imported by `routes.tsx` and by `RootLayout`
+  (preload) without a circular import. `NAV_LINKS` has an optional `preload` (lazy pages only). One
+  `<Suspense>` with a `Spinner` around `<Outlet />` inside `<main>` (header stays). React Router 7 runs navigations
+  in a transition, so after the first page the old page stays visible until the new chunk arrives (the spinner shows
+  mostly on the first load). Nav links preload on `onMouseEnter` + `onFocus`.
+  New links to lazy pages (e.g. in 20/21) should preload the same way. Build: main file 349 → 347 kB.
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
@@ -705,7 +727,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   in the browser. Fine for this app (no SEO); the nginx config in step 32 could return 404 for unknown paths.
 - **Router's default error screen shows the stack (16a review → step 17):** without an `errorElement`, React Router's
   built-in screen renders `error.message`, `<pre>{stack}</pre>` and a "Hey developer" hint for any render error, in
-  production builds too (see the next gap). Low risk (the user sees only their own errors, the bundle is public
+  production builds too (see the next gap). Since 16b, a lazy page whose chunk fails to load (offline, or a deploy
+  removed the old file) also ends there, replacing the whole layout including the header. Low risk (the user sees only their own errors, the bundle is public
   anyway), but it breaks the "no stack traces to the user" rule. Step 17 adds the `errorElement`.
 - **React Router ships its development build (16a code review → step 24):** `react-router` 7's `package.json`
   `exports` has no `production` condition; every condition points to `dist/development/`, so Vite bundles the dev
