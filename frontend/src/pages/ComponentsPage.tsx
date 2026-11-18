@@ -2,6 +2,30 @@ import { useState } from 'react';
 import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
 import { toast } from 'sonner';
 import { Alert, Badge, Button, Card, FormField, Input, Select, Spinner, Textarea } from '@/components/ui';
+import { http } from '@/config/http';
+import { ApiError, NetworkError, TimeoutError } from '@/lib/http';
+
+// Demo for the HTTP client: each error class gets its own text; the server's message is never shown.
+async function callApi(path: string, timeoutMs?: number) {
+  try {
+    await http.request(path, { timeoutMs });
+    toast.success(`GET ${path} answered OK`);
+  } catch (error) {
+    if (error instanceof ApiError) {
+      toast.error(`The server answered ${error.status} (${error.code})`, {
+        id: error.code,
+        duration: Infinity,
+        description: `Request ID: ${error.requestId ?? 'unknown'}`,
+      });
+    } else if (error instanceof TimeoutError) {
+      toast.error('The server took too long to answer', { id: 'TIMEOUT', duration: Infinity });
+    } else if (error instanceof NetworkError) {
+      toast.error('The server could not be reached', { id: 'NETWORK', duration: Infinity });
+    } else {
+      throw error;
+    }
+  }
+}
 
 // Demo for the error boundary: the click only sets state; the error is thrown during the next RENDER.
 // Throwing inside onClick itself would NOT be caught: boundaries only catch render errors.
@@ -67,6 +91,19 @@ export default function ComponentsPage() {
           onClick={() => toast.error('Could not save the post', { id: 'demo-save-error', duration: Infinity })}
         >
           Error toast
+        </Button>
+      </Card>
+
+      <Card className="flex flex-wrap items-center gap-2">
+        <h2 className="w-full font-medium text-gray-900">HTTP client (needs the API running)</h2>
+        <Button variant="secondary" onClick={() => callApi('/api/health')}>
+          Health check
+        </Button>
+        <Button variant="secondary" onClick={() => callApi('/api/does-not-exist')}>
+          Missing route (404)
+        </Button>
+        <Button variant="secondary" onClick={() => callApi('/api/health', 1)}>
+          Timeout (1 ms)
         </Button>
       </Card>
 
