@@ -53,13 +53,14 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 |---|---|---|---|---|---|
 | 14 | `pr/14-frontend-setup` | Vite 7 + React 19 + TS + Tailwind 4, `@/` alias, ESLint (react-hooks) | `lib/cn` | – | ✅ |
 | 15a | `pr/15a-ui-components` | Button, Spinner, Badge, Card, Alert (React 19 `ref` as a prop) | `components/ui/*` | – | ✅ |
-| 15b | `pr/15b-form-fields` | FormField, Input, Textarea, Select (label, error, `aria-invalid`, `aria-describedby`) | `components/ui/*` | – | 🔍 |
-| 16 | `pr/16-router-lazy-loading` | React Router, `React.lazy` + Suspense, preload on hover, layout, 404 | `lib/lazy-with-preload` | P2 | ⬜ |
+| 15b | `pr/15b-form-fields` | FormField, Input, Textarea, Select (label, error, `aria-invalid`, `aria-describedby`) | `components/ui/*` | – | ✅ |
+| 16a | `pr/16a-router-layout` | React Router, shared layout with navigation, 404 page | – | P2 | 🔍 |
+| 16b | `pr/16b-lazy-loading` | `React.lazy` + Suspense for pages, preload on hover/focus | `lib/lazy-with-preload` | P2 | ⬜ |
 | 17 | `pr/17-error-handling-ui` | ErrorBoundary, route and chunk-load errors, toast system, React 19 `onCaughtError`/`onUncaughtError` | `components/feedback/*` | – | ⬜ |
 | 18 | `pr/18-http-client` | Fetch client: `ApiError`/`NetworkError`/`TimeoutError`, timeout, retry + backoff, abort, offline banner; shows the server's request ID in errors | `lib/http`, `hooks/useOnlineStatus` | S3, DX | ⬜ |
 | 19 | `pr/19-use-fetch` | `useFetch` with AbortController (no leaks), `ErrorState` with a retry button | `hooks/useFetch` | P3 | ⬜ |
 | 20 | `pr/20-forms` | react-hook-form + Zod, mapping server errors to fields, login and register forms; "Log in with GitHub" link (a plain `<a href>`, not fetch) and the `/login?error=OAUTH_FAILED \| OAUTH_DENIED \| OAUTH_EMAIL_TAKEN` messages (from 13c) | `lib/forms` | S1 | ⬜ |
-| 21 | `pr/21-auth-client` | In-memory token, single-flight refresh, CSRF header, AuthProvider, ProtectedRoute, RequireRole, safe redirect | `lib/http` (auth plugin) | S1, S2 | ⬜ |
+| 21 | `pr/21-auth-client` | In-memory token, single-flight refresh, CSRF header, AuthProvider, ProtectedRoute, GuestRoute, RequireRole as route groups in `src/router/routes.tsx`, safe redirect | `lib/http` (auth plugin) | S1, S2 | ⬜ |
 | 22 | `pr/22-dashboard-admin` | Posts (create, optimistic delete with `useOptimistic`), admin role management | – | S2, P1 | ⬜ |
 | 23 | `pr/23-security-demo` | Demos: XSS (React escaping vs DOMPurify), dangerous URLs, CSRF, rate limit, CSP in `vite preview` | `lib/sanitize` | S1, S3 | ⬜ |
 | 24 | `pr/24-performance-demo` | `memo`/`useMemo`/`useCallback`, `useDeferredValue`, VirtualList, manualChunks, bundle analysis, dynamic import | `components/ui/VirtualList` | P1, P2 | ⬜ |

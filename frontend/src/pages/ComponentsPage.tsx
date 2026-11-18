@@ -1,10 +1,10 @@
 import { Alert, Badge, Button, Card, FormField, Input, Select, Spinner, Textarea } from '@/components/ui';
 
-// Temporary showcase of the UI components; the router (step 16) replaces it with real pages.
-export function App() {
+// Showcase of the UI components (a living style guide), so changes to them can be checked by eye.
+export function ComponentsPage() {
   return (
-    <main className="mx-auto max-w-2xl space-y-6 p-8">
-      <h1 className="text-2xl font-semibold text-gray-900">React Security &amp; Performance Lab</h1>
+    <div className="space-y-6">
+      <h1 className="text-2xl font-semibold text-gray-900">UI components</h1>
 
       <Card className="flex flex-wrap items-center gap-2">
         <Button>Primary</Button>
@@ -35,6 +35,6 @@ export function App() {
       <Alert variant="error" title="Something went wrong">
         Request ID: 9f2c1a. Please try again.
       </Alert>
-    </main>
+    </div>
   );
 }
