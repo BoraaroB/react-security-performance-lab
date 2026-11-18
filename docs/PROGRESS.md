@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 17a (route errors, PR #37). Phase A (Express backend) is complete.
-- **In review:** step 17b (`pr/17b-error-boundary`): `components/feedback/ErrorBoundary` + React 19 `onCaughtError`/`onUncaughtError` in `main.tsx`.
-- **Next:** step 17c (`pr/17c-toasts`): `components/feedback/Toast` (`ToastProvider` + `useToast`, `aria-live`, timer cleanup).
+- **Last merged:** 17b (ErrorBoundary + root error hooks, PR #38). Phase A (Express backend) is complete.
+- **In review:** step 17c (`pr/17c-toasts`): `components/feedback/Toast` (`ToastProvider` + `useToast`, polite live region, timer cleanup).
+- **Next:** step 18 (`pr/18-http-client`): `lib/http` (`ApiError`/`NetworkError`/`TimeoutError`, timeout, retry, abort) + `hooks/useOnlineStatus`. Likely needs a split (18a, 18b, ...): ask the user.
 
 ## How to resume after `/clear`
 
@@ -58,7 +58,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 16a | Router + layout + 404 | ✅ PR #35 | `react-router` 7.18.5, `router/` (`index.ts`, `routes.tsx`, `paths.ts` = `PATHS`), `layouts/RootLayout.tsx` (`NavLink` + `Outlet`), `pages/` (Home, Components = old App.tsx, NotFound); second commit: `src/app/` → `src/router/` + `src/layouts/` |
 | 16b | Lazy pages + preload | ✅ PR #36 | `lib/lazy-with-preload` (`lazyWithPreload(load)` → lazy component + `preload()`), `router/lazy-pages.ts` (only Components), `Suspense` in `RootLayout`; second commit: no own promise cache, Home + 404 eager |
 | 17a | Route errors | ✅ PR #37 | `pages/RouteErrorPage.tsx` (`useRouteError`, `CHUNK_LOAD_ERROR` regex, Reload + home link), two `errorElement`s in `routes.tsx` (pathless route around the pages + the layout route) |
-| 17b | ErrorBoundary + root error hooks | 🔍 `pr/17b-error-boundary` | `components/feedback/ErrorBoundary/` (class, `fallback({ error, reset })`, no logging), `createRoot(…, { onCaughtError, onUncaughtError })` in `main.tsx`, `BrokenWidget` demo card on `/components` |
+| 17b | ErrorBoundary + root error hooks | ✅ PR #38 | `components/feedback/ErrorBoundary/` (class, `fallback({ error, reset })`, no logging), `createRoot(…, { onCaughtError, onUncaughtError })` in `main.tsx`, `BrokenWidget` demo card on `/components` |
+| 17c | Toasts | 🔍 `pr/17c-toasts` | `components/feedback/Toast/` (`ToastProvider` + `useToast()` → `showToast({ message, variant? })`, `ToastItem` with timer cleanup), provider in `main.tsx`, demo buttons on `/components` |
 
 ## Decisions (and why)
 
@@ -623,6 +624,22 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   default handling: console logging, and for uncaught errors also the `window` `error` event), today `console.error` with the component stack; an error-tracking service would go there.
   `onCaughtError` also fires for the router's `errorElement` boundaries. Fallbacks never show `error.message`.
   Demo: `BrokenWidget` on `/components` throws during render after a click (a throw inside `onClick` would not be caught).
+- **Toasts (step 17c):** `src/components/feedback/Toast/` = `ToastProvider.tsx` (state, context, `useToast`) +
+  `ToastItem.tsx` (one toast and its timer). API: `const showToast = useToast(); showToast({ message, variant? })`;
+  `useToast` outside the provider throws. The context value is ONLY the stable `showToast` function (not the list),
+  so callers do not re-render when toasts change. `message` is a `string` rendered as text (never HTML / ReactNode);
+  callers map error `code`s to messages, never show raw server text. Variants `info` (default) / `success` / `error`
+  (own `VARIANT_CLASSES`, same colors as `Alert`; no `warning`, no dependency on `components/ui` or `lib/cn`).
+  `info`/`success` close after `durationMs` (default 5000); `error` stays until closed (time to read it, WCAG 2.2.1).
+  `maxToasts` (default 3, values below 1 count as 1: `slice(-0)` keeps everything; 17c review) keeps the newest only
+  (an error in a loop cannot pile up toasts). The × button has the same `focus-visible` ring as `Button`. Timer: `setTimeout` in
+  `ToastItem`'s `useEffect`, `clearTimeout` in the cleanup; `dismiss` is a `useCallback` with no deps and gets the
+  `id`, so the effect never restarts (an inline `() => dismiss(id)` would restart every timer on each render).
+  Ids from a `useRef` counter (not `crypto.randomUUID`, which needs a secure context). Live region: one
+  `<div aria-live="polite">`, always rendered (screen readers ignore regions added together with their content), no
+  `role="status"` (implies `aria-atomic="true"`: all visible toasts would be re-read) and no `role="alert"` (errors too
+  are polite: they come after an action, the user is not interrupted). Toasts never take focus. `<ToastProvider>` wraps
+  `RouterProvider` in `main.tsx`, so route error pages can use it too.
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
@@ -761,6 +778,11 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `onCaughtError` stays the one place to log (17b code review corrected the first version of this note). Harmless
   today (console only); an error-tracking service should report from `onCaughtError` only. Not verified in the
   browser for a route error (only the `/components` widget was clicked).
+- **Toast limits (17c):** no pause on hover/focus (an `info` toast can disappear while being read; `error` toasts
+  stay); `maxToasts` drops the oldest toast even if it is an unread error; the × button's label is part of the live
+  region, so some screen readers read "Dismiss notification" after the message; closing a toast with the keyboard
+  removes the focused × button, so focus falls back to `<body>` (17c code review). Fine for this app; revisit if
+  toasts carry important information.
 - **React Router ships its development build (16a code review → step 24):** `react-router` 7's `package.json`
   `exports` has no `production` condition; every condition points to `dist/development/`, so Vite bundles the dev
   build (dev warnings on, `console.error` on render errors). The size is the same as the production build. Step 24
