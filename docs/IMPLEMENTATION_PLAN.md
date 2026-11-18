@@ -45,13 +45,13 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 12d | `pr/12d-admin-role-change` | `PATCH /admin/users/:id/role`: admin changes a role (no self-demotion / keep at least one admin) | – | S2 | ✅ |
 | 13a | `pr/13a-oauth-core` | OAuth 2.0 client core: Authorization Code + PKCE (S256) + `state`, code exchange; no routes | `lib/oauth` | S2 | ✅ |
 | 13b | `pr/13b-oauth-github-start` | Optional `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` (routes off without them), `GET /auth/oauth/github` → redirect, `state` + verifier in an `HttpOnly; Secure; SameSite=Lax` cookie (Path = callback, ~10 min; `Strict` would break the return from GitHub) | – | S2 | ✅ |
-| 13c | `pr/13c-oauth-github-callback` | Callback: Zod-validate the query (`code`, `state`, provider `error`), clear the cookie (success and failure), check `state`, exchange the code, read the GitHub user (`fetchGithubProfile` in `lib/oauth/providers/github.ts`), link by `provider + providerUserId` (never auto-link by email), accounts without a password, refresh cookie, redirect to the frontend (failures → login page with a stable error code, never a 500) | – | S2 | 🔍 |
+| 13c | `pr/13c-oauth-github-callback` | Callback: Zod-validate the query (`code`, `state`, provider `error`), clear the cookie (success and failure), check `state`, exchange the code, read the GitHub user (`fetchGithubProfile` in `lib/oauth/providers/github.ts`), link by `provider + providerUserId` (never auto-link by email), accounts without a password, refresh cookie, redirect to the frontend (failures → login page with a stable error code, never a 500) | – | S2 | ✅ |
 
 ## Phase B: Frontend (`frontend`)
 
 | # | PR | What we get | Portable modules | Goal | Status |
 |---|---|---|---|---|---|
-| 14 | `pr/14-frontend-setup` | Vite 7 + React 19 + TS + Tailwind 4, `@/` alias, ESLint (react-hooks) | `lib/cn` | – | ⬜ |
+| 14 | `pr/14-frontend-setup` | Vite 7 + React 19 + TS + Tailwind 4, `@/` alias, ESLint (react-hooks) | `lib/cn` | – | 🔍 |
 | 15 | `pr/15-ui-components` | Button, FormField, Input, Textarea, Select, Card, Alert, Badge, Spinner (React 19 `ref` as a prop) | `components/ui/*` | – | ⬜ |
 | 16 | `pr/16-router-lazy-loading` | React Router, `React.lazy` + Suspense, preload on hover, layout, 404 | `lib/lazy-with-preload` | P2 | ⬜ |
 | 17 | `pr/17-error-handling-ui` | ErrorBoundary, route and chunk-load errors, toast system, React 19 `onCaughtError`/`onUncaughtError` | `components/feedback/*` | – | ⬜ |

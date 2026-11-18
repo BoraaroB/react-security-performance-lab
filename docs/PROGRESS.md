@@ -5,10 +5,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 13b (OAuth login start, PR #30)
-- **In review:** step 13c (`pr/13c-oauth-github-callback`): the OAuth callback (GitHub login works end to end)
-- **Next:** step 14 (`pr/14-frontend-setup`): Phase B starts (Vite 7 + React 19 + TS + Tailwind 4). This is the
-  first frontend step: `frontend/` does not exist yet and is created from scratch.
+- **Last merged:** 13c (OAuth callback, PR #31). Phase A (Express backend) is complete.
+- **In review:** step 14 (`pr/14-frontend-setup`): Phase B starts; `frontend/` created (Vite 7 + React 19 + TS + Tailwind 4)
+- **Next:** step 15 (`pr/15-ui-components`): Button, FormField, Input, ... in `src/components/ui/`, using `lib/cn`.
+  Probably split into 15a/15b (nine components will not fit ~150 lines): ask the user.
 
 ## How to resume after `/clear`
 
@@ -52,7 +52,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 12d | Admin role change | ✅ PR #28 | `PATCH /api/admin/users/:id/role`, `CANNOT_CHANGE_OWN_ROLE`, caller re-checked before the write; second commit: `ROLES` const array |
 | 13a | OAuth core | ✅ PR #29 | `lib/oauth` (`createOAuthClient` → `createAuthorizationRequest`, `exchangeCode`; `isSameState`) |
 | 13b | GitHub login start | ✅ PR #30 | `API_ORIGIN`, `GITHUB_CLIENT_ID`/`SECRET`, `oauthClients` Map + `oauthCallbackPath()` in `security.ts`, generic `oauth.controller.ts`, `__Secure-oauth_<provider>` cookie; second commit: generic providers |
-| 13c | GitHub login callback | 🔍 `pr/13c-oauth-github-callback` | `fetchGithubProfile` + `GITHUB_SCOPES` + `OAuthProfile` in `lib/oauth`; password-less users + `userIdsByOAuthIdentity`; `loginWithOAuth`; `FRONTEND_ORIGIN`; `GET /api/auth/oauth/github/callback` |
+| 13c | GitHub login callback | ✅ PR #31 | `fetchGithubProfile` + `GITHUB_SCOPES` + `OAuthProfile` in `lib/oauth`; password-less users + `userIdsByOAuthIdentity`; `loginWithOAuth`; `FRONTEND_ORIGIN`; `GET /api/auth/oauth/github/callback` |
+| 14 | Frontend setup | 🔍 `pr/14-frontend-setup` | `frontend/`: Vite 7.3.7, React 19.3.1, Tailwind 4.3.4, TS 5.9 (3 tsconfigs), ESLint 9 + react-hooks 7, `@/` alias, `strictPort`, `lib/cn` (clsx + tailwind-merge) |
 
 ## Decisions (and why)
 
@@ -508,6 +509,29 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   messages for `/login?error=OAUTH_FAILED | OAUTH_DENIED | OAUTH_EMAIL_TAKEN`.
 - **`FRONTEND_ORIGIN` (13c):** exact origin (`isExactOrigin`), default `http://localhost:5173`, https required in
   production when a provider is on (same check as `API_ORIGIN`). Not derived from `CORS_ORIGINS` (that is a list).
+- **Frontend setup (step 14):** `frontend/` has its own `package.json` (no root workspace until step 30); run
+  `npm install` in it. `tsconfig.json` only references `tsconfig.app.json` (`src`, DOM types, `vite/client`, NO Node
+  types, so `process.env` does not compile in browser code; `paths` `@/*`) and `tsconfig.node.json`
+  (`vite.config.ts`, Node types); `typecheck` = `tsc -b`. The `@/` alias is in BOTH `vite.config.ts` and
+  `tsconfig.app.json`. Frontend imports have no `.js` extension. `server.strictPort: true` on 5173 (the API's CORS,
+  CSRF Origin list and `FRONTEND_ORIGIN` allow exactly that origin); `vite preview` also runs on 5173 with
+  `strictPort` (its default 4173 is not allowed; found in review). The dev server listens on `localhost` only (Vite
+  default, no `--host`). **No Vite dev proxy** on purpose: the API stays a different origin (CORS with credentials),
+  which keeps `/api/mobile/*` unreadable from the web app (see the mobile-auth decision). ESLint 9 flat config, lints
+  `**/*.{ts,tsx}`: `@eslint/js` + `typescript-eslint` recommended (not type-aware) + `react-hooks` 7
+  `configs.flat.recommended`, which in v7 is 16 rules: `rules-of-hooks` (error), `exhaustive-deps` (warn) and the
+  React Compiler rules, mostly errors (`set-state-in-effect`, `refs`, `purity`, `immutability`, `static-components`,
+  `use-memo`, ...; found in review). Later steps must follow them (e.g. `useFetch` in 19 must not call `setState`
+  synchronously in an effect body); the intentionally bad demo components in 24/25 need a scoped
+  `// eslint-disable-next-line <rule> -- demo: <reason>`. No `eslint-plugin-react-refresh` (not in the plan).
+  `StrictMode` in `main.tsx`. Production build has no source maps (Vite default).
+- **`.gitignore` (step 14 review):** `.env.*` + `!.env.example` instead of only `.env.local`, because Vite also
+  reads `.env.[mode]` and `.env.[mode].local`.
+- **`lib/cn` (step 14):** `cn(...inputs)` = `twMerge(clsx(inputs))`, re-exports `ClassValue`. `tailwind-merge@3`
+  is for Tailwind 4 (v2 for Tailwind 3).
+- **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
+  `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
+  rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
 - **Simpler code (user's request after 12b, applies to every step):** the code must be easy to read for someone who
   just opens the file. No helper functions for one call site (inline the `if`), named regexes instead of bare ones,
   short comments (the "why" in 1–2 lines; long explanations go to the PR description), one field per line in objects. No HTML stripping on input: text is stored as typed and escaped on output (React); DOMPurify
@@ -520,8 +544,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - `backend-express/.env` exists locally (git-ignored). It needs `DATA_ENCRYPTION_KEY` (07a), `JWT_SECRET` (08) and `CSRF_SECRET` (11):
   run `node scripts/setup-env.mjs` (it fills empty secrets and keeps everything else).
   For GitHub login (13b+), the user adds `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` from their own GitHub OAuth App.
-- Nothing else: `frontend/`, `backend-nest/`, and the root `package.json` were deleted on purpose.
-  Each step creates its own files from scratch (frontend in step 14, Nest in step 26, root scripts in step 30).
+- `frontend/` needs no `.env` yet. `backend-nest/` and the root `package.json` do not exist on purpose
+  (Nest in step 26, root scripts in step 30).
 
 ## Known gaps (fixed in later steps)
 
@@ -627,4 +651,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   once after a 403 `CSRF_INVALID` (the session cookie was lost when the browser closed, or a page made the browser
   navigate to `/api/auth/csrf` without the cookie, which sets a new one).
 - **Nest (step 28):** `CsrfGuard` must call the same `core.ts` and apply only to cookie routes, not `/api/mobile/*`.
-- npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts.
+- npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts, and so do Vite and
+  esbuild in `frontend/` (esbuild's binary comes from an optional platform package, not from its install script).
+- **Frontend dev-tool advisories (14):** `npm audit` in `frontend/` reports picomatch ReDoS (high, via Vite/tinyglobby,
+  no fixed version published yet) and minimatch (moderate, via typescript-eslint 8.72.x; fixed in 8.73.0, which was
+  2 days old at install time). Dev-only (`npm audit --omit=dev` is clean) and reachable only through glob patterns we
+  write. Re-check before step 35: its CI runs `npm audit --audit-level=high`, which this picomatch advisory would fail.
+  Upgrade typescript-eslint once 8.73+ is two weeks old (with `--before`).
