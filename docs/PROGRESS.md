@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** 16b (lazy pages + preload, PR #36). Phase A (Express backend) is complete.
-- **In review:** step 17a (`pr/17a-route-errors`): router `errorElement` (`RouteErrorPage`), chunk-load errors, "Reload" button.
-- **Next:** step 17b (`pr/17b-error-boundary`): `components/feedback/ErrorBoundary` + React 19 `onCaughtError`/`onUncaughtError`.
+- **Last merged:** 17a (route errors, PR #37). Phase A (Express backend) is complete.
+- **In review:** step 17b (`pr/17b-error-boundary`): `components/feedback/ErrorBoundary` + React 19 `onCaughtError`/`onUncaughtError` in `main.tsx`.
+- **Next:** step 17c (`pr/17c-toasts`): `components/feedback/Toast` (`ToastProvider` + `useToast`, `aria-live`, timer cleanup).
 
 ## How to resume after `/clear`
 
@@ -57,7 +57,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 15b | Form fields | ✅ PR #34 | `FormField` (render prop, `useId`), `Input`, `Textarea`, `Select`, `control-classes.ts`; showcase card in App.tsx |
 | 16a | Router + layout + 404 | ✅ PR #35 | `react-router` 7.18.5, `router/` (`index.ts`, `routes.tsx`, `paths.ts` = `PATHS`), `layouts/RootLayout.tsx` (`NavLink` + `Outlet`), `pages/` (Home, Components = old App.tsx, NotFound); second commit: `src/app/` → `src/router/` + `src/layouts/` |
 | 16b | Lazy pages + preload | ✅ PR #36 | `lib/lazy-with-preload` (`lazyWithPreload(load)` → lazy component + `preload()`), `router/lazy-pages.ts` (only Components), `Suspense` in `RootLayout`; second commit: no own promise cache, Home + 404 eager |
-| 17a | Route errors | 🔍 `pr/17a-route-errors` | `pages/RouteErrorPage.tsx` (`useRouteError`, `CHUNK_LOAD_ERROR` regex, Reload + home link), two `errorElement`s in `routes.tsx` (pathless route around the pages + the layout route) |
+| 17a | Route errors | ✅ PR #37 | `pages/RouteErrorPage.tsx` (`useRouteError`, `CHUNK_LOAD_ERROR` regex, Reload + home link), two `errorElement`s in `routes.tsx` (pathless route around the pages + the layout route) |
+| 17b | ErrorBoundary + root error hooks | 🔍 `pr/17b-error-boundary` | `components/feedback/ErrorBoundary/` (class, `fallback({ error, reset })`, no logging), `createRoot(…, { onCaughtError, onUncaughtError })` in `main.tsx`, `BrokenWidget` demo card on `/components` |
 
 ## Decisions (and why)
 
@@ -612,6 +613,16 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   a full reload retries) and a home `Link` (React Router resets its boundary when the location changes; checked in
   headless Chrome). No automatic reload (it could loop when the server is down; Vite's `vite:preloadError` event was not
   used for that reason). No `isRouteErrorResponse` branch: there are no loaders/actions that throw responses yet.
+- **ErrorBoundary (step 17b):** `src/components/feedback/ErrorBoundary/` (folder per component, as the
+  `portable-module` skill says; `components/ui` stays the flat exception). A class component (no hook exists):
+  `getDerivedStateFromError` only, no `componentDidCatch`. State has `hasError` + `error` (JS can throw `null`).
+  `fallback` is a required render prop `({ error, reset }) => ReactNode`: no default fallback, so the module needs
+  nothing from `components/ui`. `reset` clears the error and renders `children` again (fresh state). No `onReset` /
+  `resetKeys` props: resetting from outside is done with React's `key` (README). The boundary never logs: logging is
+  in ONE place, `createRoot(root, { onCaughtError, onUncaughtError })` in `main.tsx` (React 19; these replace React's
+  default handling: console logging, and for uncaught errors also the `window` `error` event), today `console.error` with the component stack; an error-tracking service would go there.
+  `onCaughtError` also fires for the router's `errorElement` boundaries. Fallbacks never show `error.message`.
+  Demo: `BrokenWidget` on `/components` throws during render after a click (a throw inside `onClick` would not be caught).
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
@@ -744,6 +755,12 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `index.html`: given `index.html`, Safari may report a MIME-type error that `CHUNK_LOAD_ERROR` does not match (17a review, untested),
   so the user would see the generic text instead (Reload still works). Errors in event handlers and async code are not caught by `errorElement`
   (handled by the http client in 18, `useFetch` in 19, toasts in 17c).
+- **Route errors are logged twice (17b):** React Router's own boundary calls `console.error("React Router caught the
+  following error during render")` and React then calls our `onCaughtError` too. `<RouterProvider onError={...}>`
+  (react-router 7.18) replaces that `console.error` (and also fires for loader/action errors, none yet); not used, so
+  `onCaughtError` stays the one place to log (17b code review corrected the first version of this note). Harmless
+  today (console only); an error-tracking service should report from `onCaughtError` only. Not verified in the
+  browser for a route error (only the `/components` widget was clicked).
 - **React Router ships its development build (16a code review → step 24):** `react-router` 7's `package.json`
   `exports` has no `production` condition; every condition points to `dist/development/`, so Vite bundles the dev
   build (dev warnings on, `console.error` on render errors). The size is the same as the production build. Step 24
