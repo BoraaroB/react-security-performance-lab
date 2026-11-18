@@ -60,7 +60,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 17a | Route errors | ✅ PR #37 | `pages/RouteErrorPage.tsx` (`useRouteError`, `CHUNK_LOAD_ERROR` regex, Reload + home link), two `errorElement`s in `routes.tsx` (pathless route around the pages + the layout route) |
 | 17b | ErrorBoundary + root error hooks | ✅ PR #38 | `components/feedback/ErrorBoundary/` (class, `fallback({ error, reset })`, no logging), `createRoot(…, { onCaughtError, onUncaughtError })` in `main.tsx`, `BrokenWidget` demo card on `/components` |
 | 17c | Toasts | ✅ PR #39 | `components/feedback/Toast/` (`ToastProvider` + `useToast()` → `showToast({ message, variant? })`, `ToastItem` with timer cleanup), provider in `main.tsx`, demo buttons on `/components` |
-| – | Sonner toasts | 🔍 `chore/sonner-toasts` | `components/feedback/Toast/` deleted; `sonner` 2.0.8, `<Toaster richColors closeButton />` in `main.tsx`, demo calls `toast.info/success/error` |
+| – | Sonner toasts | 🔍 `chore/sonner-toasts` | `components/feedback/Toast/` deleted; `sonner` 2.0.8, `<Toaster richColors closeButton />` in `main.tsx`, demo calls `toast.info/success/error`; old module kept as reference in `src/examples/custom-toast/`; CLAUDE.md updated |
 
 ## Decisions (and why)
 
@@ -625,7 +625,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   default handling: console logging, and for uncaught errors also the `window` `error` event), today `console.error` with the component stack; an error-tracking service would go there.
   `onCaughtError` also fires for the router's `errorElement` boundaries. Fallbacks never show `error.message`.
   Demo: `BrokenWidget` on `/components` throws during render after a click (a throw inside `onClick` would not be caught).
-- **Toasts (step 17c, REPLACED by sonner, see the next item):** `src/components/feedback/Toast/` (deleted; still in git history, PR #39, and `docs/prs/17c-toasts.md`) = `ToastProvider.tsx` (state, context, `useToast`) +
+- **Toasts (step 17c, REPLACED by sonner, see the next item):** `src/components/feedback/Toast/` (moved to `src/examples/custom-toast/` as reference code; explained in `docs/prs/17c-toasts.md`) = `ToastProvider.tsx` (state, context, `useToast`) +
   `ToastItem.tsx` (one toast and its timer). API: `const showToast = useToast(); showToast({ message, variant? })`;
   `useToast` outside the provider throws. The context value is ONLY the stable `showToast` function (not the list),
   so callers do not re-render when toasts change. `message` is a `string` rendered as text (never HTML / ReactNode);
@@ -642,7 +642,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   are polite: they come after an action, the user is not interrupted). Toasts never take focus. `<ToastProvider>` wraps
   `RouterProvider` in `main.tsx`, so route error pages can use it too.
 - **Sonner instead of custom toasts (`chore/sonner-toasts`, user's decision after 17c):** a well-tested library
-  over our own module in the app; 17c stays in history as the "how it works inside" lesson. `sonner@^2.0.8` (MIT, no
+  over our own module in the app. The 17c module is kept as reference code in `src/examples/custom-toast/`
+  (user's request: to read how it works inside): README says "reference only", nothing imports it, so it is not in
+  the bundle (checked: its strings are not in `dist/`), but typecheck and lint still check it. **`src/examples/`
+  (new folder, in CLAUDE.md):** reference code the app does not use; never import from it. `sonner@^2.0.8` (MIT, no
   dependencies, React 18/19). `<Toaster richColors closeButton />` once in `main.tsx` (sibling of `RouterProvider`,
   no provider); anywhere: `import { toast } from 'sonner'` → `toast.info(...)`, `toast.success(...)`,
   `toast.error(...)`. Defaults kept: bottom-right, 4 s, at most 3 visible, timers paused on hover, while pressing a

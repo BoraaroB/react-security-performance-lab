@@ -47,7 +47,7 @@ Major versions are pinned to proven ones on purpose. The newest majors (Vite 8, 
 
 | Part | Versions |
 |---|---|
-| frontend | React 19, Vite 7, TypeScript 5.9, Tailwind 4, React Router 7, react-hook-form 7, Zod 4, DOMPurify 3 |
+| frontend | React 19, Vite 7, TypeScript 5.9, Tailwind 4, React Router 7, react-hook-form 7, Zod 4, DOMPurify 3, sonner 2 (toasts) |
 | backend-express | Express 5, pino (+ pino-http, pino-pretty), helmet 8, cors, express-rate-limit 8, jsonwebtoken 9, bcryptjs 3, Zod 4, tsx |
 | backend-nest | NestJS 11, @nestjs/jwt, @nestjs/throttler 6, helmet, Zod 4 |
 | runtime | Node 24 (`.nvmrc`) |
@@ -60,7 +60,8 @@ Ports: frontend `5173`, Express `4000`, Nest `4001`. Both backends use the `/api
 frontend/          React 19 + Vite
   src/lib/         PORTABLE: http client, sanitize, utils (framework-free where possible)
   src/hooks/       PORTABLE: generic hooks (useFetch, useOnlineStatus, ...)
-  src/components/  PORTABLE: ui/ (Button, Input, ...), feedback/ (ErrorBoundary, Toast, ...)
+  src/components/  PORTABLE: ui/ (Button, Input, ...), feedback/ (ErrorBoundary, ...)
+  src/examples/    reference code, NOT imported by the app (e.g. custom-toast: the hand-written toasts from step 17c)
   src/features/    app-specific (auth, posts, demo pages)
   src/pages/       route pages (lazy loaded)
 backend-express/
