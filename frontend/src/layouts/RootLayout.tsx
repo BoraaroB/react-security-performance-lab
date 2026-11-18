@@ -15,7 +15,11 @@ const NAV_LINKS: { to: string; label: string; preload?: () => void }[] = [
 export function RootLayout() {
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="border-b border-gray-200 bg-white">
+      {/* `sticky` (not `fixed`): it stays in the page flow, so the content below needs no top padding.
+          See `scroll-padding-top` in index.css, so the header never covers a focused element.
+          See-through + blur shows the page scrolling under it. Browsers without backdrop-filter get an almost solid
+          background instead, so the links stay readable over the page text. */}
+      <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 backdrop-blur-md supports-[backdrop-filter]:bg-white/70">
         <nav aria-label="Main" className="mx-auto flex max-w-2xl gap-4 px-8 py-3">
           {NAV_LINKS.map((link) => (
             <NavLink
