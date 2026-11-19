@@ -18,6 +18,8 @@ export type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   // Sent as JSON.
   body?: unknown;
+  // Extra headers, e.g. { 'X-CSRF-Token': token }. They only ever go to the API origin (checked below).
+  headers?: Record<string, string>;
   // Lets the caller cancel (e.g. when a component unmounts).
   signal?: AbortSignal;
   // Overrides the client's timeout for this request (each attempt gets the full timeout).
@@ -63,7 +65,8 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
       throw new Error('A GET request cannot have a body');
     }
 
-    const headers = new Headers({ Accept: 'application/json' });
+    const headers = new Headers(requestOptions.headers);
+    headers.set('Accept', 'application/json');
     let body: string | undefined;
     if (requestOptions.body !== undefined) {
       headers.set('Content-Type', 'application/json');
