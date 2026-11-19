@@ -1,4 +1,5 @@
-import { API_ORIGIN, authHttp } from '@/config/http';
+import { API_ORIGIN } from '@/config/http';
+import { authHttp, setAccessToken } from './auth.http';
 import type { LoginInput, RegisterInput } from './auth.schemas';
 
 export type AuthUser = {
@@ -16,32 +17,15 @@ type AuthResponse = {
   user: AuthUser;
 };
 
-type CsrfResponse = {
-  csrfToken: string;
-};
-
-// Every POST needs a CSRF token. This call also sets the CSRF cookie the server compares it with.
-// Temporary: step 21 keeps the token in memory instead of fetching it before every POST.
-async function fetchCsrfToken(): Promise<string> {
-  const { csrfToken } = await authHttp.request<CsrfResponse>('/api/auth/csrf');
-  return csrfToken;
-}
-
 export async function login(input: LoginInput): Promise<AuthResponse> {
-  const csrfToken = await fetchCsrfToken();
-  return authHttp.request<AuthResponse>('/api/auth/login', {
-    method: 'POST',
-    body: input,
-    headers: { 'X-CSRF-Token': csrfToken },
-  });
+  const response = await authHttp.request<AuthResponse>('/api/auth/login', { method: 'POST', body: input });
+  setAccessToken(response.accessToken);
+  return response;
 }
 
 // A new account is logged in at once: the answer is the same as login's (access token + refresh cookie).
 export async function register(input: RegisterInput): Promise<AuthResponse> {
-  const csrfToken = await fetchCsrfToken();
-  return authHttp.request<AuthResponse>('/api/auth/register', {
-    method: 'POST',
-    body: input,
-    headers: { 'X-CSRF-Token': csrfToken },
-  });
+  const response = await authHttp.request<AuthResponse>('/api/auth/register', { method: 'POST', body: input });
+  setAccessToken(response.accessToken);
+  return response;
 }

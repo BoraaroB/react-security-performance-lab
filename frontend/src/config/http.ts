@@ -19,11 +19,8 @@ if (import.meta.env.PROD && apiUrl.protocol === 'http:' && apiUrl.hostname !== '
   throw new Error('VITE_API_ORIGIN must use https:// in production (except localhost)');
 }
 
-// For links that the browser opens itself (e.g. the GitHub login), not through the HTTP client.
+// For links that the browser opens itself (e.g. the GitHub login) and for other HTTP clients (auth.http.ts).
 export const API_ORIGIN = apiOrigin;
 
+// For public calls only: no cookies, no tokens. Calls that need the session use `authHttp` (features/auth/auth.http.ts).
 export const http = createHttpClient({ apiOrigin });
-
-// Only for /api/auth/*: the API is on another origin, and login needs its cookies (CSRF cookie sent, refresh cookie
-// received). Other calls keep 'same-origin', so they never carry cookies they do not need.
-export const authHttp = createHttpClient({ apiOrigin, credentials: 'include' });
