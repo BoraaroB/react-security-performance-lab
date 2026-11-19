@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 20a (`pr/20a-login-form`, PR #46).
-- **In review:** step 20b (`pr/20b-register-form`): lazy `/register` page, `registerSchema` in the browser, `EMAIL_TAKEN` on the email field, shared `getAuthErrorMessage`.
-- **Next:** step 20c (`pr/20c-oauth-login`): "Log in with GitHub" link + `/login?error=OAUTH_*` messages. Then 21 (auth client).
+- **Last merged:** step 20b (`pr/20b-register-form`, PR #47).
+- **In review:** step 20c (`pr/20c-oauth-login`): "Log in with GitHub" link (plain `<a href>`) + messages for `/login?error=OAUTH_FAILED | OAUTH_DENIED | OAUTH_EMAIL_TAKEN`.
+- **Next:** step 21 (`pr/21-auth-client`): in-memory token, single-flight refresh, CSRF header, AuthProvider, route guards, safe redirect. First present the two designs (auth option vs interceptors; see the memory note) and let the user choose. Probably needs a split.
 
 ## How to resume after `/clear`
 
@@ -67,7 +67,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 18c | Online status | ✅ PR #44 | `hooks/useOnlineStatus` (first `src/hooks/` module; `useSyncExternalStore`, server snapshot `true`), amber banner in the sticky header (`role="status"` wrapper always mounted) |
 | 19 | useFetch + ErrorState | ✅ PR #45 | `hooks/useFetch` (`useFetch<T>(http, path)` → `{ data, error, isLoading, reload }`), `components/feedback/ErrorState` (text by error type, code + request ID, "Try again"), `HealthWidget` demo card on `/components`; one PR (~220 lines incl. READMEs, user's choice) |
 | 20a | Login form | ✅ PR #46 | `react-hook-form` 7.91, `zod` 4.6, `@hookform/resolvers` 5.9; `lib/forms` (`applyServerErrors`), `features/auth/` (`auth.schemas.ts`, `auth.api.ts`), lazy `pages/LoginPage.tsx`, `headers` request option in `lib/http`, `authHttp` in `config/http.ts`; ~170 code lines + 2 READMEs (over the ~150 budget, accepted with the user's split choice) |
-| 20b | Register form | 🔍 `pr/20b-register-form` | `pages/RegisterPage.tsx` (lazy, nav link "Register"), `registerSchema` + shared `email` rule in `auth.schemas.ts`, `register()` + `fetchCsrfToken()` in `auth.api.ts`, `features/auth/auth.errors.ts` (`getAuthErrorMessage`, also used by `LoginPage`); ~160 inserted / ~25 deleted code lines |
+| 20b | Register form | ✅ PR #47 | `pages/RegisterPage.tsx` (lazy, nav link "Register"), `registerSchema` + shared `email` rule in `auth.schemas.ts`, `register()` + `fetchCsrfToken()` in `auth.api.ts`, `features/auth/auth.errors.ts` (`getAuthErrorMessage`, also used by `LoginPage`); ~160 inserted / ~25 deleted code lines |
+| 20c | GitHub login link + OAuth errors | 🔍 `pr/20c-oauth-login` | `GITHUB_LOGIN_URL` in `auth.api.ts`, `API_ORIGIN` export in `config/http.ts`, `getOAuthErrorMessage(code)` in `auth.errors.ts`, `LoginPage` reads `?error=` (`useSearchParams`) and removes it on submit |
 
 ## Decisions (and why)
 
@@ -757,6 +758,18 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   the register limit is 5 per HOUR. A nav link "Register" (with preload) instead of "No account? Create one" links
   inside the pages: kept the PR under budget; step 21 reworks the nav anyway (GuestRoute). react-hook-form + Zod +
   the schemas are now one shared chunk (120 kB, 38 kB gzip) used by both pages; each page chunk is ~1.5 kB.
+- **GitHub login link + OAuth errors (step 20c):** a plain `<a href={GITHUB_LOGIN_URL}>` (styled like a secondary
+  button), not fetch: the whole page must go to GitHub, the API's start route sets the `__Secure-oauth_github`
+  cookie (state + PKCE verifier) and redirects there, and the client refuses redirects anyway (`redirect: 'error'`).
+  `GITHUB_LOGIN_URL` = `API_ORIGIN` (new export of `config/http.ts`, the same checked value the clients use) +
+  `/api/auth/oauth/github`. `getOAuthErrorMessage(code)` uses its own `Map` of the three codes the callback sends
+  (separate from `getAuthErrorMessage`: a URL value, not an `ApiError`). Unknown codes show NOTHING: `?error=` is
+  attacker-controlled, so its text is never rendered (content injection / fake "call support" messages); checked with
+  plain text, `__proto__` and HTML. The OAuth `Alert` is above the card; on submit the page removes `error` from the
+  URL (`setSearchParams(fn, { replace: true })`, only that key), so an old GitHub error never stands next to the
+  password login's result. After a SUCCESSFUL GitHub login the API redirects to `/` with only the refresh cookie;
+  nothing shows it yet: step 21 calls `POST /api/auth/refresh` on start. Main file +0.9 kB (`useSearchParams` was
+  not bundled before).
 - **ErrorState (step 19):** `src/components/feedback/ErrorState/` on top of `Alert` (error = `role="alert"`) +
   `Button size="sm"`. Exception to portable-module rule 2 (only `lib` dependencies): it imports `components/ui`
   on purpose, to reuse the `Alert` role and colors (its README lists it under `components:`; 19 code review). Text by type: `NetworkError`, `TimeoutError`, `ApiError` 429, `ApiError` ≥ 500, else generic;
@@ -937,6 +950,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **No runtime check of API responses (18a):** `request<T>` trusts the server's JSON shape; a changed API gives a
   wrong type at runtime, not a clear error. A Zod schema per call (step 20 adds Zod to the frontend) would fix it.
 - **`AbortSignal.any` needs Safari 17.4+ (18a):** older browsers fail every request with a `TypeError` (`AbortSignal.any is not a function`). Accepted (no polyfill, no `browserslist` target yet).
+- **GitHub link shows even when GitHub is not configured (20c):** without `GITHUB_CLIENT_ID`/`SECRET` the API has no
+  `/api/auth/oauth/github` route, so the link opens the API's JSON 404. The frontend cannot know; a `VITE_*` flag or a
+  `GET /api/auth/providers` list would fix it. Not planned (the demo setup documents the GitHub OAuth App).
 - **Login and register stay on the page after success (20a/20b → step 21):** there is no auth state yet, so nothing
   redirects. Register empties the form (`reset()`, 20b review: a second click got 409 and used a register try); login
   keeps it (a second click only starts another session). Step 21's GuestRoute + safe redirect replaces this.
