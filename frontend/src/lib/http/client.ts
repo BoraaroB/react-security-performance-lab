@@ -1,9 +1,34 @@
 import { ApiError, NetworkError, TimeoutError, type FieldError } from './errors';
 import { getRetryDelayMs, parseRetryAfterMs, wait } from './retry';
 
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+export type RequestContext = {
+  path: string;
+  method: HttpMethod;
+  // The interceptor adds or changes headers here, e.g. Authorization.
+  headers: Headers;
+};
+
+export type ErrorContext = {
+  path: string;
+  method: HttpMethod;
+  // Sends the same request again. That attempt skips onResponseError, so an interceptor can never loop.
+  retry: () => Promise<unknown>;
+};
+
+// The interceptor pattern (as in axios): app code (tokens, CSRF, refresh) plugs in here, the client stays generic.
+export type HttpInterceptors = {
+  // Runs before every attempt, so a retry picks up a token that changed in the meantime.
+  onRequest?: (context: RequestContext) => void | Promise<void>;
+  // Runs once when a request fails (after the GET retries). Throw the error, or return a value instead (e.g. `retry()`).
+  onResponseError?: (error: unknown, context: ErrorContext) => Promise<unknown>;
+};
+
 export type HttpClientOptions = {
   // Exact origin of the API, e.g. 'https://api.example.com' (no path, no trailing slash).
   apiOrigin: string;
+  interceptors?: HttpInterceptors;
   // Default: 10 s. Without a timeout, fetch can wait for minutes on a hanging server.
   timeoutMs?: number;
   // Default: 'same-origin'. Use 'include' only when the API is on another origin and needs its cookies.
@@ -15,7 +40,7 @@ export type HttpClientOptions = {
 };
 
 export type RequestOptions = {
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  method?: HttpMethod;
   // Sent as JSON.
   body?: unknown;
   // Extra headers, e.g. { 'X-CSRF-Token': token }. They only ever go to the API origin (checked below).
@@ -41,6 +66,7 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
   const credentials = options.credentials ?? 'same-origin';
   const defaultRetries = options.retries ?? 2;
   const maxRetryDelayMs = options.maxRetryDelayMs ?? 10_000;
+  const interceptors = options.interceptors ?? {};
   // NaN here would make every delay NaN, and setTimeout(NaN) fires at once: a tight retry loop.
   if (!Number.isFinite(maxRetryDelayMs) || maxRetryDelayMs <= 0) {
     throw new Error(`maxRetryDelayMs must be a positive number, got ${maxRetryDelayMs}`);
@@ -48,16 +74,11 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
 
   async function requestOnce<T>(path: string, requestOptions: RequestOptions): Promise<T> {
     // '//evil.com/x' or 'https://evil.com' would leave our API. The body and the headers this client adds
-    // (the access token and CSRF token from step 21) must never go to another host.
+    // (e.g. the access token and CSRF token from the interceptors) must never go to another host.
     const url = new URL(path, apiOrigin);
     if (url.origin !== apiOrigin) {
       throw new Error(`Request path must stay on the API origin, got "${path}"`);
     }
-
-    const timeoutMs = requestOptions.timeoutMs ?? defaultTimeoutMs;
-    const timeoutSignal = AbortSignal.timeout(timeoutMs);
-    const signals = requestOptions.signal ? [requestOptions.signal, timeoutSignal] : [timeoutSignal];
-    const signal = AbortSignal.any(signals);
 
     const method = requestOptions.method ?? 'GET';
     // fetch rejects a GET with a body; without this check that bug would look like a NetworkError.
@@ -66,6 +87,14 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
     }
 
     const headers = new Headers(requestOptions.headers);
+    // Before the timeout starts: an interceptor may wait for a token, and that wait is not the server being slow.
+    await interceptors.onRequest?.({ path, method, headers });
+
+    const timeoutMs = requestOptions.timeoutMs ?? defaultTimeoutMs;
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    const signals = requestOptions.signal ? [requestOptions.signal, timeoutSignal] : [timeoutSignal];
+    const signal = AbortSignal.any(signals);
+
     headers.set('Accept', 'application/json');
     let body: string | undefined;
     if (requestOptions.body !== undefined) {
@@ -140,7 +169,7 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
     return data as T;
   }
 
-  async function request<T>(path: string, requestOptions: RequestOptions = {}): Promise<T> {
+  async function requestWithRetries<T>(path: string, requestOptions: RequestOptions): Promise<T> {
     // Only GET is retried: a POST whose response was lost may already have created the post,
     // and sending it again would create a second one.
     const method = requestOptions.method ?? 'GET';
@@ -162,6 +191,21 @@ export function createHttpClient(options: HttpClientOptions): HttpClient {
         await wait(delayMs, requestOptions.signal);
         attempt += 1;
       }
+    }
+  }
+
+  async function request<T>(path: string, requestOptions: RequestOptions = {}): Promise<T> {
+    try {
+      return await requestWithRetries<T>(path, requestOptions);
+    } catch (error) {
+      if (interceptors.onResponseError === undefined) {
+        throw error;
+      }
+      const method = requestOptions.method ?? 'GET';
+      const retry = () => requestWithRetries<T>(path, requestOptions);
+      // The interceptor decides the type of what it returns (usually `retry()`, so it is a T).
+      const result = await interceptors.onResponseError(error, { path, method, retry });
+      return result as T;
     }
   }
 

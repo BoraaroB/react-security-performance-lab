@@ -24,7 +24,6 @@ export default function RegisterPage() {
   async function onSubmit(values: RegisterInput) {
     try {
       const { user } = await registerAccount(values);
-      // The access token is not used yet: step 21 keeps it in memory.
       toast.success(`Welcome, ${user.name}! Your account is ready.`);
       // Empty the form: a second click would get 409 EMAIL_TAKEN and use up one of the 5 register tries per hour.
       reset();

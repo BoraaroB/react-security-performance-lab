@@ -33,6 +33,7 @@ try {
 | `credentials` | `RequestCredentials` | `'same-origin'` | Set `'include'` when the API is on another origin and needs its cookies. |
 | `retries` | `number` | `2` | Extra attempts for a GET (see "Retries"), a whole number ≥ 0. Can be overridden per request (`retries: 0` turns it off). |
 | `maxRetryDelayMs` | `number` | `10000` | The longest wait between attempts. A longer `Retry-After` from the server means "do not retry". |
+| `interceptors` | `HttpInterceptors` | none | `onRequest` and `onResponseError` hooks (see "Interceptors"). |
 
 `request<T>(path, { method?, body?, headers?, signal?, timeoutMs?, retries? })`: `body` is sent as JSON (a GET with a body throws);
 `headers` adds request headers, e.g. `{ 'X-CSRF-Token': token }` (`Accept` is always `application/json`). Returns the parsed JSON
@@ -61,6 +62,34 @@ proxy's HTML 502 page) still give an `ApiError`, with `code` = `HTTP_<status>` a
   to 500 ms, 1 s, 2 s, ... ("full jitter", so many clients do not retry at the same moment).
 - Aborting the caller's `signal` also cancels the wait (the promise rejects with the `AbortError`).
 - `timeoutMs` is per attempt: with the defaults, the slowest failure takes about 3 × 10 s plus the delays.
+
+## Interceptors
+The axios pattern in a small form: the client stays generic, and the app plugs in its auth logic.
+
+```ts
+const api = createHttpClient({
+  apiOrigin: 'https://api.example.com',
+  credentials: 'include',
+  interceptors: {
+    // Before every attempt (also GET retries). Change `headers` in place; may be async (e.g. wait for a CSRF token).
+    onRequest: ({ method, headers }) => {
+      if (token) headers.set('Authorization', `Bearer ${token}`);
+    },
+    // Once per request, after the GET retries. Throw to fail, or return a value instead.
+    onResponseError: async (error, { retry }) => {
+      if (!(error instanceof ApiError) || error.code !== 'TOKEN_EXPIRED') throw error;
+      await refreshOnce(); // single flight: parallel 401s share one refresh
+      return retry();
+    },
+  },
+});
+```
+
+- **No loops:** the request that `retry()` sends skips `onResponseError`, so a second failure is thrown as is.
+  The app must still not call its refresh from inside the refresh request's own error (it would wait for itself).
+- `onRequest` runs before the timeout starts, so waiting for a token does not count as the server being slow.
+  The caller's `signal` is checked only after `onRequest` finishes, so an abort during that wait takes effect late.
+- Every error reaches `onResponseError`, also `NetworkError`, `TimeoutError`, and the caller's `AbortError`: rethrow what you do not handle.
 
 ## How to reuse
 Copy `src/lib/http/`. Frontend imports have no `.js` extension. Create ONE client in app glue (e.g.

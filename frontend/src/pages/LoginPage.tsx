@@ -35,7 +35,6 @@ export default function LoginPage() {
     }
     try {
       const { user } = await login(values);
-      // The access token is not used yet: step 21 keeps it in memory.
       toast.success(`Logged in as ${user.name}`);
     } catch (error) {
       if (applyServerErrors(error, setError, ['email', 'password'])) {

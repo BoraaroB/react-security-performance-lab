@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 20b (`pr/20b-register-form`, PR #47).
-- **In review:** step 20c (`pr/20c-oauth-login`): "Log in with GitHub" link (plain `<a href>`) + messages for `/login?error=OAUTH_FAILED | OAUTH_DENIED | OAUTH_EMAIL_TAKEN`.
-- **Next:** step 21 (`pr/21-auth-client`): in-memory token, single-flight refresh, CSRF header, AuthProvider, route guards, safe redirect. First present the two designs (auth option vs interceptors; see the memory note) and let the user choose. Probably needs a split.
+- **Last merged:** step 20c (`pr/20c-oauth-login`, PR #48).
+- **In review:** step 21a (`pr/21a-auth-interceptors`): interceptors in `lib/http`, access token in memory, cached CSRF token, single-flight refresh.
+- **Next:** step 21b (`pr/21b-auth-provider`): AuthProvider + `useAuth` (restore the session on load via `POST /refresh`, login/register/logout, user in the header). Then 21c (route guards + safe redirect).
 
 ## How to resume after `/clear`
 
@@ -68,7 +68,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 19 | useFetch + ErrorState | ✅ PR #45 | `hooks/useFetch` (`useFetch<T>(http, path)` → `{ data, error, isLoading, reload }`), `components/feedback/ErrorState` (text by error type, code + request ID, "Try again"), `HealthWidget` demo card on `/components`; one PR (~220 lines incl. READMEs, user's choice) |
 | 20a | Login form | ✅ PR #46 | `react-hook-form` 7.91, `zod` 4.6, `@hookform/resolvers` 5.9; `lib/forms` (`applyServerErrors`), `features/auth/` (`auth.schemas.ts`, `auth.api.ts`), lazy `pages/LoginPage.tsx`, `headers` request option in `lib/http`, `authHttp` in `config/http.ts`; ~170 code lines + 2 READMEs (over the ~150 budget, accepted with the user's split choice) |
 | 20b | Register form | ✅ PR #47 | `pages/RegisterPage.tsx` (lazy, nav link "Register"), `registerSchema` + shared `email` rule in `auth.schemas.ts`, `register()` + `fetchCsrfToken()` in `auth.api.ts`, `features/auth/auth.errors.ts` (`getAuthErrorMessage`, also used by `LoginPage`); ~160 inserted / ~25 deleted code lines |
-| 20c | GitHub login link + OAuth errors | 🔍 `pr/20c-oauth-login` | `GITHUB_LOGIN_URL` in `auth.api.ts`, `API_ORIGIN` export in `config/http.ts`, `getOAuthErrorMessage(code)` in `auth.errors.ts`, `LoginPage` reads `?error=` (`useSearchParams`) and removes it on submit |
+| 20c | GitHub login link + OAuth errors | ✅ PR #48 | `GITHUB_LOGIN_URL` in `auth.api.ts`, `API_ORIGIN` export in `config/http.ts`, `getOAuthErrorMessage(code)` in `auth.errors.ts`, `LoginPage` reads `?error=` (`useSearchParams`) and removes it on submit |
+| 21a | Auth interceptors | 🔍 `pr/21a-auth-interceptors` | `lib/http`: `interceptors` option (`onRequest`, `onResponseError` + `retry()`); `features/auth/auth.http.ts` (moved `authHttp` there from `config/http.ts`): token in memory, CSRF + refresh promises (single flight); `auth.api.ts` stores the token after login/register, no more CSRF fetch per POST; ~170 inserted / ~40 deleted code lines (over budget, accepted by the user with the 3-PR split) |
 
 ## Decisions (and why)
 
@@ -800,8 +801,39 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   (`npm run build` → `vite preview`, step 23) needs `VITE_API_ORIGIN=http://localhost:4000` set, or `config/http.ts` throws. `backend-nest/` and the root `package.json` do not exist on purpose
   (Nest in step 26, root scripts in step 30).
 
+- **Step 21 design and split (user's choice, 2026-11-19):** generic interceptors (the industry pattern: axios
+  interceptors, ky hooks, ofetch `onRequest`), not a narrow `auth` option on the client. Small form: one `onRequest`
+  and one `onResponseError` per client, no `use()`/`eject()` chain. Split into 3 PRs: 21a interceptors + token +
+  CSRF + refresh (a bit over budget, accepted), 21b AuthProvider, 21c route guards + safe redirect.
+- **Interceptors (21a):** `onRequest` runs before EVERY attempt (so a retry gets the new token) and before the
+  timeout starts. `onResponseError` runs once, after the GET retries; its `retry()` resends the request WITHOUT
+  `onResponseError`, so a second failure is thrown and nothing can loop.
+- **Auth glue (21a):** `features/auth/auth.http.ts` owns the session client `authHttp` (`credentials: 'include'`,
+  because CSRF on the API is global, so every write needs the CSRF cookie). `config/http.ts` keeps only the public
+  `http` client and `API_ORIGIN`. The access token is a module variable (memory only). The CSRF token and the refresh are
+  stored as PROMISES: parallel callers share one fetch (single flight). A failed CSRF fetch is not cached.
+  `CSRF_INVALID` → forget the token, retry once. `TOKEN_EXPIRED` → one shared `POST /refresh`, retry once; never for
+  the refresh path itself (it would await its own promise forever). A failed refresh clears the access token.
+  Retrying a POST is safe here: both errors come from middleware before any handler runs.
+  The access token is cleared only when the refresh gets a 401 (the session is really over) AND the token did not
+  change meanwhile (a login during the refresh wins). A network error, timeout, or 429 keeps it, so the next call tries again.
+  No refresh for `/refresh` or `/csrf`: the refresh waits for the CSRF fetch, so either one would wait for itself.
+
 ## Known gaps (fixed in later steps)
 
+- **Cross-tab refresh (10a → 21a):** single flight works per tab. Two tabs whose tokens expire together send two refreshes
+  with the same cookie, both get `REUSED`, and the family is revoked (logout). No server grace period on purpose. Fix idea: Web Locks API
+  (`navigator.locks.request('refresh', ...)`) or BroadcastChannel. Becomes visible in 21b (every tab refreshes on load).
+- **Late 401 after a refresh (21a, low):** a request whose `TOKEN_EXPIRED` arrives after the shared refresh has already
+  finished starts a second refresh (with the new cookie, so it works, only one extra call). Fix idea: compare the token
+  the request was sent with to the current one and just retry. Accepted.
+- **Parallel `CSRF_INVALID` (21a code review, low):** if the CSRF cookie is gone and two writes get 403 a few ms
+  apart, each one drops the cached token, so two `GET /csrf` run without a cookie and get different tokens. The cookie
+  keeps the last one, and the other retry fails with 403 (shown to the user). Rare: the cookie lives as long as the
+  browser session. Fix idea: drop the token only if it is still the one this request sent (needs the sent headers in `ErrorContext`).
+- **Refresh cut off by the client timeout (21a security review, low):** if `POST /refresh` times out after the server
+  rotated the token but before `Set-Cookie` arrives, the browser keeps the old cookie; the next refresh looks like
+  reuse and ends the session. Fix ideas: a longer timeout for the refresh call, or a short server-side grace window.
 - **Rate limit store (06):** in memory, per process. Several instances (or Docker replicas) would each count separately
   and a restart resets the counters. A Redis store is out of scope; mention it in the README of step 30/31.
 - **Rate-limit setup checks (06):** express-rate-limit runs each check (e.g. `X-Forwarded-For` without trusted proxy)
@@ -856,8 +888,6 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Refresh-token records are never pruned (10a):** the memory store keeps used and expired records until restart
   (used ones are needed for reuse detection until they expire), and `deleteFamily` scans every record. Fine for a demo;
   a sweep (an `.unref()` timer) or a database with a TTL index would fix it.
-- **Two tabs refreshing at once look like reuse (10a):** both send the same token, both get `REUSED`, and the
-  family is revoked (logout). Step 21 must send one refresh at a time (single-flight). No grace period on purpose.
 - **Refresh-token reuse is not logged as a security event (10a review → postponed in 10b):** a reused token gives the
   same `UNAUTHORIZED` warn line as an expired one. Operators should see reuse (possible theft) with `userId`,
   `familyId`, and the request ID (never the token or its hash). Needs `userId`/`familyId` on `RefreshTokenError` and a
@@ -887,7 +917,7 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **No "log out everywhere" (10c):** logout ends only the current login. A password change or "log out of all devices"
   needs a `deleteByUser(userId)` store method (and an index on `userId` in a database).
 - **Access tokens survive logout (10c):** an access token issued before logout keeps working until it expires
-  (≤ 15 min, see "Access tokens cannot be revoked (08)"). The frontend drops it from memory on logout (step 21).
+  (≤ 15 min, see "Access tokens cannot be revoked (08)"). The frontend drops it from memory on logout (step 21b).
 - **Mobile refresh token is a bearer secret (feat/mobile-auth):** whoever holds it can use it (until rotation
   reuse detection catches it). No device binding (DPoP, RFC 9449, or app attestation) is planned; a good interview topic.
 - **Mobile routes rely on separate origins (feat/mobile-auth review):** if the web frontend and the API ever share
@@ -899,10 +929,6 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **CSRF Origin list in a same-origin setup (11 → step 32):** `protect` uses `config.corsOrigins`. If nginx serves
   the frontend and proxies `/api` on ONE origin (step 32), that origin must still be in `CORS_ORIGINS`, or every
   POST gets 403 (production's default list is empty).
-- **Frontend must fetch the CSRF token (11 → step 21):** call `GET /api/auth/csrf` (with `credentials: 'include'`)
-  before the first POST, keep the token in memory, send `X-CSRF-Token` on every unsafe request, and fetch a new one
-  once after a 403 `CSRF_INVALID` (the session cookie was lost when the browser closed, or a page made the browser
-  navigate to `/api/auth/csrf` without the cookie, which sets a new one).
 - **Nest (step 28):** `CsrfGuard` must call the same `core.ts` and apply only to cookie routes, not `/api/mobile/*`.
 - npm 11 prints "allow-scripts" warnings on install; `tsx` works without approving any scripts, and so do Vite and
   esbuild in `frontend/` (esbuild's binary comes from an optional platform package, not from its install script).
