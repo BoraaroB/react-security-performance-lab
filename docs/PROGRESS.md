@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 21b (`pr/21b-auth-provider`, PR #50).
-- **In review:** step 21c (`pr/21c-route-guards`): `GuestRoute` / `ProtectedRoute` / `RequireRole` as pathless route groups, `/login?redirectTo=` with an open-redirect check, Dashboard + Admin pages.
-- **Next:** step 22 (`pr/22-dashboard-admin`): posts (create, optimistic delete with `useOptimistic`) and admin role management. Probably split (22a, 22b, ...): ask the user.
+- **Last merged:** step 21c (`pr/21c-route-guards`, PR #51).
+- **In review:** step 22a (`pr/22a-posts-list-create`): posts list + "new post" form on `/dashboard` (`features/posts/`).
+- **Next:** step 22b (`pr/22b-posts-optimistic-delete`): delete with `useOptimistic` (owner or admin), then 22c (admin roles).
 
 ## How to resume after `/clear`
 
@@ -71,7 +71,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 20c | GitHub login link + OAuth errors | ✅ PR #48 | `GITHUB_LOGIN_URL` in `auth.api.ts`, `API_ORIGIN` export in `config/http.ts`, `getOAuthErrorMessage(code)` in `auth.errors.ts`, `LoginPage` reads `?error=` (`useSearchParams`) and removes it on submit |
 | 21a | Auth interceptors | ✅ PR #49 | `lib/http`: `interceptors` option (`onRequest`, `onResponseError` + `retry()`); `features/auth/auth.http.ts` (moved `authHttp` there from `config/http.ts`): token in memory, CSRF + refresh promises (single flight); `auth.api.ts` stores the token after login/register, no more CSRF fetch per POST; ~170 inserted / ~40 deleted code lines (over budget, accepted by the user with the 3-PR split) |
 | 21b | AuthProvider | ✅ PR #50 | `features/auth/auth.context.ts` (`AuthContext`, `useAuth()`), `AuthProvider.tsx` (`user`, `isRestoring`, `login`, `register`, `logout`) in `main.tsx`; `refreshSession()` exported from `auth.http.ts` (shared single flight, returns the user); `restoreSession()` + `logout()` in `auth.api.ts`; header: guest links vs name + "Log out"; Log in / Register submit disabled while restoring; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
-| 21c | Route guards | 🔍 `pr/21c-route-guards` | `router/GuestRoute.tsx` (+ `getSafeRedirectPath`), `router/ProtectedRoute.tsx` (`?redirectTo=`), `router/RequireRole.tsx` (`allowedRoles`), pathless groups in `routes.tsx`; lazy `DashboardPage` + `AdminPage` (placeholders for step 22), Dashboard/Admin nav links; forms lose `disabled={isRestoring}` and register's `reset()`; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
+| 21c | Route guards | ✅ PR #51 | `router/GuestRoute.tsx` (+ `getSafeRedirectPath`), `router/ProtectedRoute.tsx` (`?redirectTo=`), `router/RequireRole.tsx` (`allowedRoles`), pathless groups in `routes.tsx`; lazy `DashboardPage` + `AdminPage` (placeholders for step 22), Dashboard/Admin nav links; forms lose `disabled={isRestoring}` and register's `reset()`; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
+| 22a | Posts list + create | 🔍 `pr/22a-posts-list-create` | `features/posts/` (`posts.api.ts` = `Post`, `POSTS_PATH`, `createPost`; `posts.schemas.ts` mirrors the server; `NewPostForm.tsx`; `PostFeed.tsx` holds the list in state), `DashboardPage` = `useFetch(authHttp, POSTS_PATH)` + `ErrorState`; ~165 inserted / ~8 deleted code lines (over budget, flagged to the user) |
 
 ## Decisions (and why)
 
@@ -856,6 +857,18 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   browser lands there); going from login to "Register" drops `redirectTo`.
   `DashboardPage` and `AdminPage` are small lazy placeholders so the guards have something to protect; step 22 fills them.
   Header: "Dashboard" for any user, "Admin" for admins only (UX only).
+
+- **Step 22 split (user's choice, 2026-11-19):** 22a = posts list + create, 22b = optimistic delete (`useOptimistic`),
+  22c = admin users list + role change.
+- **Posts on the dashboard (22a):** app code in `features/posts/` (no README, like `features/auth/`). `DashboardPage` loads
+  with `useFetch(authHttp, POSTS_PATH)` (authHttp: the API needs the access token). The list then lives in `PostFeed`'s own
+  state (`useState(initialPosts)`): a created post is put at the top from the POST answer, with no second GET. Why not
+  `reload()`: `useFetch` returns `data: undefined` while it reloads, so the whole list would flash to a spinner. 22b's
+  `useOptimistic` builds on this state. `PostFeed` mounts only after the first GET, so `initialPosts` is read once on purpose.
+  The form mirrors the server's `createPostSchema` (title trimmed + NFC before the length check, 1–200, content 1–10,000, the same control-character regexes);
+  server `details` go on the fields with `applyServerErrors`, anything else via `getAuthErrorMessage` (generic by
+  type/code despite its name). Posts are JSX text (`whitespace-pre-wrap` keeps line breaks): HTML in a post is shown,
+  never run (checked in headless Chromium: `<img onerror>` / `<script>` posts made no dialog and no `<img>`).
 
 ## Known gaps (fixed in later steps)
 

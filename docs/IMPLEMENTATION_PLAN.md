@@ -68,8 +68,10 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 20c | `pr/20c-oauth-login` | "Log in with GitHub" link (a plain `<a href>`, not fetch) and the `/login?error=OAUTH_FAILED \| OAUTH_DENIED \| OAUTH_EMAIL_TAKEN` messages (from 13c) | – | S1, S2 | ✅ |
 | 21a | `pr/21a-auth-interceptors` | Interceptors in `lib/http` (`onRequest`, `onResponseError` + `retry()`), access token in memory, cached CSRF token (new one after `CSRF_INVALID`), single-flight refresh + one retry after `TOKEN_EXPIRED` (`features/auth/auth.http.ts`) | `lib/http` (interceptors) | S1, S2 | ✅ |
 | 21b | `pr/21b-auth-provider` | AuthProvider + `useAuth`: restore the session on load (`POST /refresh`), login/register/logout, user + "Log out" in the header | – | S1, S2 | ✅ |
-| 21c | `pr/21c-route-guards` | ProtectedRoute, GuestRoute, RequireRole as route groups in `src/router/routes.tsx`, safe redirect after login | – | S1, S2 | 🔍 |
-| 22 | `pr/22-dashboard-admin` | Posts (create, optimistic delete with `useOptimistic`), admin role management | – | S2, P1 | ⬜ |
+| 21c | `pr/21c-route-guards` | ProtectedRoute, GuestRoute, RequireRole as route groups in `src/router/routes.tsx`, safe redirect after login | – | S1, S2 | ✅ |
+| 22a | `pr/22a-posts-list-create` | Dashboard: posts list (`useFetch` + `authHttp`) and "new post" form (same rules as the server's `createPostSchema`, server errors on fields), new post added to local state | – | S1, S2 | 🔍 |
+| 22b | `pr/22b-posts-optimistic-delete` | Delete own posts (admins: any) with `useOptimistic`: removed at once, back on error | – | S2, P1 | ⬜ |
+| 22c | `pr/22c-admin-roles` | Admin page: users list (`GET /api/admin/users`) and role change (`PATCH .../role`, `CANNOT_CHANGE_OWN_ROLE`) | – | S2 | ⬜ |
 | 23 | `pr/23-security-demo` | Demos: XSS (React escaping vs DOMPurify), dangerous URLs, CSRF, rate limit, CSP in `vite preview` | `lib/sanitize` | S1, S3 | ⬜ |
 | 24 | `pr/24-performance-demo` | `memo`/`useMemo`/`useCallback`, `useDeferredValue`, VirtualList, manualChunks, bundle analysis, dynamic import | `components/ui/VirtualList` | P1, P2 | ⬜ |
 | 25 | `pr/25-memory-leaks-demo` | Leaky vs fixed components (interval, listener, cache), `useEventListener`, `useInterval` | `hooks/useEventListener`, `hooks/useInterval` | P3 | ⬜ |
