@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { ErrorBoundary } from '@/components/feedback/ErrorBoundary';
+import { ErrorState } from '@/components/feedback/ErrorState';
 import { toast } from 'sonner';
 import { Alert, Badge, Button, Card, FormField, Input, Select, Spinner, Textarea } from '@/components/ui';
 import { http } from '@/config/http';
+import { useFetch } from '@/hooks/useFetch';
 import { ApiError, NetworkError, TimeoutError } from '@/lib/http';
 
 // Demo for the HTTP client: each error class gets its own text; the server's message is never shown.
@@ -25,6 +27,37 @@ async function callApi(path: string, timeoutMs?: number) {
       throw error;
     }
   }
+}
+
+type Health = {
+  status: string;
+  uptimeSeconds: number;
+};
+
+// Demo for useFetch: switching the path aborts the old request (see "(canceled)" in the Network tab).
+function HealthWidget() {
+  const [path, setPath] = useState('/api/health');
+  const { data, error, isLoading, reload } = useFetch<Health>(http, path);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" size="sm" onClick={() => setPath('/api/health')}>
+          Load health
+        </Button>
+        <Button variant="secondary" size="sm" onClick={() => setPath('/api/does-not-exist')}>
+          Load a missing route (404)
+        </Button>
+      </div>
+      {isLoading && <Spinner className="text-blue-600" />}
+      {error !== undefined && <ErrorState error={error} onRetry={reload} />}
+      {data && (
+        <p className="text-sm text-gray-700">
+          API status: {data.status}, up for {data.uptimeSeconds} s
+        </p>
+      )}
+    </div>
+  );
 }
 
 // Demo for the error boundary: the click only sets state; the error is thrown during the next RENDER.
@@ -105,6 +138,11 @@ export default function ComponentsPage() {
         <Button variant="secondary" onClick={() => callApi('/api/health', 1)}>
           Timeout (1 ms)
         </Button>
+      </Card>
+
+      <Card className="space-y-2">
+        <h2 className="font-medium text-gray-900">useFetch (needs the API running)</h2>
+        <HealthWidget />
       </Card>
 
       {/* Only this card is replaced on an error; the rest of the page keeps working. */}

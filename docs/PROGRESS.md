@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 18b (`pr/18b-http-retry`, PR #43). Phase A (Express backend) is complete.
-- **In review:** step 18c (`pr/18c-online-status`): `hooks/useOnlineStatus` (`useSyncExternalStore`) + offline banner in `RootLayout`.
-- **Next:** step 19 (`pr/19-use-fetch`): `hooks/useFetch` with AbortController (no leaks) + `ErrorState` with a retry button.
+- **Last merged:** step 18c (`pr/18c-online-status`, PR #44). Phase A (Express backend) is complete.
+- **In review:** step 19 (`pr/19-use-fetch`): `hooks/useFetch` (AbortController, `requestNumber`, `reload`) + `components/feedback/ErrorState`.
+- **Next:** step 20 (`pr/20-forms`): react-hook-form + Zod, server errors mapped to fields, login and register forms, GitHub login link.
 
 ## How to resume after `/clear`
 
@@ -64,7 +64,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | – | Sticky header | ✅ PR #41 (`feat/sticky-header`) | `RootLayout` header `sticky top-0 z-10`, `bg-white/70` + `backdrop-blur-md` (fallback `bg-white/95`), `html { scroll-padding-top: 4rem }` in `index.css` |
 | 18a | HTTP client core | ✅ PR #42 | `lib/http` (`createHttpClient({ apiOrigin })` → `request<T>`; `ApiError`/`NetworkError`/`TimeoutError`), `src/config/http.ts` (`VITE_API_ORIGIN`), demo card on `/components` |
 | 18b | HTTP retry | ✅ PR #43 | `lib/http/retry.ts` (`parseRetryAfterMs`, `getRetryDelayMs`, `wait`), `request` loops over `requestOnce`; options `retries` (2) + `maxRetryDelayMs` (10 s); `ApiError.retryAfterMs` |
-| 18c | Online status | 🔍 `pr/18c-online-status` | `hooks/useOnlineStatus` (first `src/hooks/` module; `useSyncExternalStore`, server snapshot `true`), amber banner in the sticky header (`role="status"` wrapper always mounted) |
+| 18c | Online status | ✅ PR #44 | `hooks/useOnlineStatus` (first `src/hooks/` module; `useSyncExternalStore`, server snapshot `true`), amber banner in the sticky header (`role="status"` wrapper always mounted) |
+| 19 | useFetch + ErrorState | 🔍 `pr/19-use-fetch` | `hooks/useFetch` (`useFetch<T>(http, path)` → `{ data, error, isLoading, reload }`), `components/feedback/ErrorState` (text by error type, code + request ID, "Try again"), `HealthWidget` demo card on `/components`; one PR (~220 lines incl. READMEs, user's choice) |
 
 ## Decisions (and why)
 
@@ -710,6 +711,22 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   announced reliably only when it is already mounted, so a plain `<div role="status">` always stays and only the `<p>`
   inside comes and goes. No "back online" message (the banner just disappears) and no retry when the connection
   returns: `useFetch` (19) can refetch on `online` if needed.
+- **useFetch (step 19, one PR of ~220 lines incl. READMEs: user's choice over a 19a/19b split):**
+  `src/hooks/useFetch/index.ts`, `useFetch<T>(http: HttpClient, path)` (type-only import of `lib/http`; the client is a
+  parameter, not imported from `config/`, so the hook stays portable). One `AbortController` per effect run; the
+  cleanup aborts it (unmount, path change, reload), which also cancels the client's retry wait. Both `.then` callbacks
+  return early when `signal.aborted` (no late `setState`, no race). The answer is stored with its `requestNumber`;
+  `isLoading` = the stored number is not the current one, so no `setState` in the effect body (lint rule
+  `set-state-in-effect`). The number goes up on `reload()` (`setRequestNumber(n => n + 1)`, a new function each
+  render, no `useCallback`) and on every path change: a `prevPath` state compared DURING render (React's "previous
+  props" pattern; ESLint accepts it). A key built from the path instead would repeat on A → B → A and show A's old
+  answer as current (19 code review). The `http` client must be stable (module level): it is an effect dependency. On reload or a new path, `data` goes back to `undefined` (no stale-while-revalidate). GET only, no
+  cache (writes are called from event handlers). In dev, StrictMode shows one "(canceled)" request per mount.
+- **ErrorState (step 19):** `src/components/feedback/ErrorState/` on top of `Alert` (error = `role="alert"`) +
+  `Button size="sm"`. Exception to portable-module rule 2 (only `lib` dependencies): it imports `components/ui`
+  on purpose, to reuse the `Alert` role and colors (its README lists it under `components:`; 19 code review). Text by type: `NetworkError`, `TimeoutError`, `ApiError` 429, `ApiError` ≥ 500, else generic;
+  never `error.message`. For an `ApiError` it shows `code` + `requestId`. Props `error`, `onRetry`, `title?`.
+  Feature-specific texts by `code` (e.g. `FORBIDDEN`) are not built in; a page can pass its own `title`.
 - **Frontend env (step 18a):** glue lives in `src/config/` (portable-module skill). `src/config/http.ts` creates the
   one client from `VITE_API_ORIGIN`; default `http://localhost:4000` only in dev (`import.meta.env.DEV`); a production
   build without it throws when the module loads (no silent calls to localhost), and so does a plain `http://` origin
@@ -879,8 +896,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   up for 3 × 10 s plus the delays. A total deadline (or a shorter timeout for user-facing calls) can be added if it hurts.
 - **Retries while offline (18b, eased in 18c):** a GET still retries when `navigator.onLine` is false. Harmless (a few
   failed requests); 18c's banner now tells the user why. The client could skip retries while offline; not planned.
-- **Data does not reload when the connection returns (18c → 19):** the banner disappears, but a page that failed
-  while offline keeps its error until the user retries. `useFetch` (19) could refetch on the `online` event.
+- **Data does not reload when the connection returns (18c, still open after 19):** the banner disappears, but a page
+  that failed while offline keeps its `ErrorState` until the user clicks "Try again". `useFetch` could call `reload()`
+  on the `online` event while it has an error; left out of 19 (one concept per PR). Not planned yet.
 - **No runtime check of API responses (18a):** `request<T>` trusts the server's JSON shape; a changed API gives a
   wrong type at runtime, not a clear error. A Zod schema per call (step 20 adds Zod to the frontend) would fix it.
 - **`AbortSignal.any` needs Safari 17.4+ (18a):** older browsers fail every request with a `TypeError` (`AbortSignal.any is not a function`). Accepted (no polyfill, no `browserslist` target yet).
