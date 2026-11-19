@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 22a (`pr/22a-posts-list-create`, PR #52).
-- **In review:** step 22b (`pr/22b-posts-optimistic-delete`): delete posts with `useOptimistic` (author or admin), the post comes back on error.
-- **Next:** step 22c (`pr/22c-admin-roles`): admin page with the users list and role change.
+- **Last merged:** step 22b (`pr/22b-posts-optimistic-delete`, PR #53).
+- **In review:** step 22c (`pr/22c-admin-roles`): admin page with the users table and role change (`features/admin/`).
+- **Next:** step 23 (`pr/23-security-demo`): XSS (React escaping vs DOMPurify), dangerous URLs, CSRF, rate limit, CSP in `vite preview`, `lib/sanitize`. Probably split (23a, 23b, ...): ask the user.
 
 ## How to resume after `/clear`
 
@@ -73,7 +73,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 21b | AuthProvider | ✅ PR #50 | `features/auth/auth.context.ts` (`AuthContext`, `useAuth()`), `AuthProvider.tsx` (`user`, `isRestoring`, `login`, `register`, `logout`) in `main.tsx`; `refreshSession()` exported from `auth.http.ts` (shared single flight, returns the user); `restoreSession()` + `logout()` in `auth.api.ts`; header: guest links vs name + "Log out"; Log in / Register submit disabled while restoring; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
 | 21c | Route guards | ✅ PR #51 | `router/GuestRoute.tsx` (+ `getSafeRedirectPath`), `router/ProtectedRoute.tsx` (`?redirectTo=`), `router/RequireRole.tsx` (`allowedRoles`), pathless groups in `routes.tsx`; lazy `DashboardPage` + `AdminPage` (placeholders for step 22), Dashboard/Admin nav links; forms lose `disabled={isRestoring}` and register's `reset()`; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
 | 22a | Posts list + create | ✅ PR #52 | `features/posts/` (`posts.api.ts` = `Post`, `POSTS_PATH`, `createPost`; `posts.schemas.ts` mirrors the server; `NewPostForm.tsx`; `PostFeed.tsx` holds the list in state), `DashboardPage` = `useFetch(authHttp, POSTS_PATH)` + `ErrorState`; ~165 inserted / ~8 deleted code lines (over budget, flagged to the user) |
-| 22b | Optimistic delete | 🔍 `pr/22b-posts-optimistic-delete` | `deletePost(id)` in `posts.api.ts` (`encodeURIComponent`), `PostFeed`: `useOptimistic(posts, filter)` + `startTransition(async ...)`, "Delete" only for the author or an admin (UX), 404 = already deleted, 403 own toast; ~80 inserted / ~17 deleted code lines |
+| 22b | Optimistic delete | ✅ PR #53 | `deletePost(id)` in `posts.api.ts` (`encodeURIComponent`), `PostFeed`: `useOptimistic(posts, filter)` + `startTransition(async ...)`, "Delete" only for the author or an admin (UX), 404 = already deleted, 403 own toast; ~80 inserted / ~17 deleted code lines |
+| 22c | Admin roles | 🔍 `pr/22c-admin-roles` | `features/admin/` (`admin.api.ts` = `AdminUser`, `ADMIN_USERS_PATH`, `changeRole`; `UserTable.tsx`), `AdminPage` = `useFetch(authHttp, ADMIN_USERS_PATH)` + `ErrorState`; own row disabled; one save at a time; errors mapped by code; ~128 inserted / ~5 deleted code lines |
 
 ## Decisions (and why)
 
@@ -883,6 +884,19 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   for the author or an admin (`user.role`), with `aria-label` = `Delete "<title>"`; the API checks the same on every
   DELETE (12c). No confirm dialog (kept small); an "undo" toast would be the friendlier UX.
 
+- **Admin roles page (22c):** app code in `features/admin/`. `AdminPage` loads `GET /api/admin/users` with `useFetch`
+  (same pattern as the dashboard); `UserTable` keeps the users in state and swaps in the user the PATCH returns.
+  NOT optimistic (unlike 22b): a role change is a security action, so the table shows only what the server confirmed;
+  the row's `<Select>` is controlled by `user.role`, so it jumps back to the old role at once and shows the new one only
+  after the server confirms; it simply stays on the old value after an error. While a save runs, EVERY select is disabled
+  (one save at a time, code review: one id per row let a second save clear the first row's lock, and two answers for one
+  row could arrive out of order). A focused select that becomes disabled may lose keyboard focus; accepted (the forms'
+  submit buttons do the same). The admin's own row is disabled (the API refuses it anyway: `409 CANNOT_CHANGE_OWN_ROLE`).
+  Toast text by `code` from a `Map` (`CANNOT_CHANGE_OWN_ROLE`, `FORBIDDEN` = the caller was demoted meanwhile,
+  `NOT_FOUND`), else generic. `AdminUser` = `AuthUser` (the API's `PublicUser` has the same four fields).
+  A demoted admin keeps seeing the Admin link and page until a reload (`user.role` in `AuthProvider` is from login/refresh);
+  every action gets 403, so it is UX only (checked in headless Chromium).
+
 ## Known gaps (fixed in later steps)
 
 - **Failed delete comes back late during another delete (22b code review, low):** React 19 drops optimistic values
@@ -892,7 +906,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 - **Header can show a dead session (21b):** when a refresh fails with 401 during normal use (session revoked or expired),
   `auth.http.ts` clears the access token, but `AuthProvider` still has the `user`, so the header shows the name until
-  the next reload or logout; since 21c the route guards also keep showing protected pages (their API calls fail with 401). Fix idea: `auth.http.ts` notifies a listener (`onSessionEnded`) that the provider subscribes to.
+  the next reload or logout; since 21c the route guards also keep showing protected pages (their API calls fail with 401),
+  and since 22c a demoted admin keeps the Admin link and page until a reload (actions get 403). Fix idea: `auth.http.ts` notifies a listener (`onSessionEnded`) that the provider subscribes to.
 
 - **Cross-tab refresh (10a → 21a):** single flight works per tab. Two tabs whose tokens expire together send two refreshes
   with the same cookie, both get `REUSED`, and the family is revoked (logout). No server grace period on purpose. Fix idea: Web Locks API
