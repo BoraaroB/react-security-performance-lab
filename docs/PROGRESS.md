@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 21c (`pr/21c-route-guards`, PR #51).
-- **In review:** step 22a (`pr/22a-posts-list-create`): posts list + "new post" form on `/dashboard` (`features/posts/`).
-- **Next:** step 22b (`pr/22b-posts-optimistic-delete`): delete with `useOptimistic` (owner or admin), then 22c (admin roles).
+- **Last merged:** step 22a (`pr/22a-posts-list-create`, PR #52).
+- **In review:** step 22b (`pr/22b-posts-optimistic-delete`): delete posts with `useOptimistic` (author or admin), the post comes back on error.
+- **Next:** step 22c (`pr/22c-admin-roles`): admin page with the users list and role change.
 
 ## How to resume after `/clear`
 
@@ -72,7 +72,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 21a | Auth interceptors | ✅ PR #49 | `lib/http`: `interceptors` option (`onRequest`, `onResponseError` + `retry()`); `features/auth/auth.http.ts` (moved `authHttp` there from `config/http.ts`): token in memory, CSRF + refresh promises (single flight); `auth.api.ts` stores the token after login/register, no more CSRF fetch per POST; ~170 inserted / ~40 deleted code lines (over budget, accepted by the user with the 3-PR split) |
 | 21b | AuthProvider | ✅ PR #50 | `features/auth/auth.context.ts` (`AuthContext`, `useAuth()`), `AuthProvider.tsx` (`user`, `isRestoring`, `login`, `register`, `logout`) in `main.tsx`; `refreshSession()` exported from `auth.http.ts` (shared single flight, returns the user); `restoreSession()` + `logout()` in `auth.api.ts`; header: guest links vs name + "Log out"; Log in / Register submit disabled while restoring; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
 | 21c | Route guards | ✅ PR #51 | `router/GuestRoute.tsx` (+ `getSafeRedirectPath`), `router/ProtectedRoute.tsx` (`?redirectTo=`), `router/RequireRole.tsx` (`allowedRoles`), pathless groups in `routes.tsx`; lazy `DashboardPage` + `AdminPage` (placeholders for step 22), Dashboard/Admin nav links; forms lose `disabled={isRestoring}` and register's `reset()`; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
-| 22a | Posts list + create | 🔍 `pr/22a-posts-list-create` | `features/posts/` (`posts.api.ts` = `Post`, `POSTS_PATH`, `createPost`; `posts.schemas.ts` mirrors the server; `NewPostForm.tsx`; `PostFeed.tsx` holds the list in state), `DashboardPage` = `useFetch(authHttp, POSTS_PATH)` + `ErrorState`; ~165 inserted / ~8 deleted code lines (over budget, flagged to the user) |
+| 22a | Posts list + create | ✅ PR #52 | `features/posts/` (`posts.api.ts` = `Post`, `POSTS_PATH`, `createPost`; `posts.schemas.ts` mirrors the server; `NewPostForm.tsx`; `PostFeed.tsx` holds the list in state), `DashboardPage` = `useFetch(authHttp, POSTS_PATH)` + `ErrorState`; ~165 inserted / ~8 deleted code lines (over budget, flagged to the user) |
+| 22b | Optimistic delete | 🔍 `pr/22b-posts-optimistic-delete` | `deletePost(id)` in `posts.api.ts` (`encodeURIComponent`), `PostFeed`: `useOptimistic(posts, filter)` + `startTransition(async ...)`, "Delete" only for the author or an admin (UX), 404 = already deleted, 403 own toast; ~80 inserted / ~17 deleted code lines |
 
 ## Decisions (and why)
 
@@ -870,7 +871,24 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   type/code despite its name). Posts are JSX text (`whitespace-pre-wrap` keeps line breaks): HTML in a post is shown,
   never run (checked in headless Chromium: `<img onerror>` / `<script>` posts made no dialog and no `<img>`).
 
+- **Optimistic delete (22b):** `useOptimistic(posts, (current, deletedId) => filter)` in `PostFeed`; the list renders
+  `visiblePosts`. `handleDelete` runs in `startTransition(async ...)`: `hidePost(id)` first (gone at once), then
+  `await deletePost(id)`. Success → `setPosts(filter)` wrapped in a SECOND `startTransition` (after an `await`, React
+  loses the transition context; React 19 docs). Failure → no undo code: when the transitions end, React drops the
+  optimistic value and shows `posts` again, so the post comes back, plus an error toast. React 19 entangles all
+  pending async transitions (found in code review), so that happens only when EVERY pending delete has settled.
+  `403 FORBIDDEN` gets its own toast (no "try again"); other errors the generic one. A reducer (not a ready list)
+  so a post created while a delete is pending is kept: React re-runs the reducer on the new `posts`.
+  `404 NOT_FOUND` counts as done (someone else, e.g. an admin, deleted it first); no toast then. The button shows only
+  for the author or an admin (`user.role`), with `aria-label` = `Delete "<title>"`; the API checks the same on every
+  DELETE (12c). No confirm dialog (kept small); an "undo" toast would be the friendlier UX.
+
 ## Known gaps (fixed in later steps)
+
+- **Failed delete comes back late during another delete (22b code review, low):** React 19 drops optimistic values
+  only when all pending async transitions have settled. If delete A is slow and delete B fails fast, B's error toast
+  shows at once but B stays hidden until A finishes. Fix idea: keep a "pending ids" state per delete instead of
+  `useOptimistic`. Accepted: it is React's documented behavior and resolves itself.
 
 - **Header can show a dead session (21b):** when a refresh fails with 401 during normal use (session revoked or expired),
   `auth.http.ts` clears the access token, but `AuthProvider` still has the `user`, so the header shows the name until
