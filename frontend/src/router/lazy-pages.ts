@@ -6,3 +6,6 @@ import { lazyWithPreload } from '@/lib/lazy-with-preload';
 export const ComponentsPage = lazyWithPreload(() => import('@/pages/ComponentsPage'));
 export const LoginPage = lazyWithPreload(() => import('@/pages/LoginPage'));
 export const RegisterPage = lazyWithPreload(() => import('@/pages/RegisterPage'));
+export const DashboardPage = lazyWithPreload(() => import('@/pages/DashboardPage'));
+// Lazy keeps the admin code out of everyone else's download (a size win, not security: the file is still public).
+export const AdminPage = lazyWithPreload(() => import('@/pages/AdminPage'));

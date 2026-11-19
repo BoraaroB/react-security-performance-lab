@@ -5,7 +5,7 @@ import { Button, Spinner } from '@/components/ui';
 import { useAuth } from '@/features/auth/auth.context';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { cn } from '@/lib/cn';
-import { ComponentsPage, LoginPage, RegisterPage } from '@/router/lazy-pages';
+import { AdminPage, ComponentsPage, DashboardPage, LoginPage, RegisterPage } from '@/router/lazy-pages';
 import { PATHS } from '@/router/paths';
 
 type NavLinkItem = { to: string; label: string; preload?: () => void };
@@ -22,14 +22,26 @@ const GUEST_LINKS: NavLinkItem[] = [
   { to: PATHS.register, label: 'Register', preload: RegisterPage.preload },
 ];
 
+const USER_LINKS: NavLinkItem[] = [{ to: PATHS.dashboard, label: 'Dashboard', preload: DashboardPage.preload }];
+
+// Hiding the link is only for the UX: RequireRole guards the page and the API guards the data.
+const ADMIN_LINKS: NavLinkItem[] = [{ to: PATHS.admin, label: 'Admin', preload: AdminPage.preload }];
+
 // Shared frame for every page: the header stays mounted while <Outlet /> swaps the page below it.
 export function RootLayout() {
   const isOnline = useOnlineStatus();
   const { user, isRestoring, logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  // Hidden while the session check runs, so a logged-in user does not see "Log in" flash on every page load.
-  const showGuestLinks = !isRestoring && user === null;
-  const links = showGuestLinks ? [...NAV_LINKS, ...GUEST_LINKS] : NAV_LINKS;
+  let links = NAV_LINKS;
+  if (user !== null) {
+    links = [...NAV_LINKS, ...USER_LINKS];
+  } else if (!isRestoring) {
+    // Guest links wait for the session check, so a logged-in user does not see "Log in" flash on every page load.
+    links = [...NAV_LINKS, ...GUEST_LINKS];
+  }
+  if (user?.role === 'admin') {
+    links = [...links, ...ADMIN_LINKS];
+  }
 
   async function handleLogout() {
     setIsLoggingOut(true);

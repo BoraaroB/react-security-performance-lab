@@ -5,4 +5,6 @@ export const PATHS = {
   components: '/components',
   login: '/login',
   register: '/register',
+  dashboard: '/dashboard',
+  admin: '/admin',
 } as const;

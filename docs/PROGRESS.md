@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 21a (`pr/21a-auth-interceptors`, PR #49).
-- **In review:** step 21b (`pr/21b-auth-provider`): `AuthProvider` + `useAuth()`, session restored on load via the shared single-flight refresh, logout, user + "Log out" in the header.
-- **Next:** step 21c (`pr/21c-route-guards`): ProtectedRoute / GuestRoute / RequireRole route groups (wait for `isRestoring`), safe redirect after login.
+- **Last merged:** step 21b (`pr/21b-auth-provider`, PR #50).
+- **In review:** step 21c (`pr/21c-route-guards`): `GuestRoute` / `ProtectedRoute` / `RequireRole` as pathless route groups, `/login?redirectTo=` with an open-redirect check, Dashboard + Admin pages.
+- **Next:** step 22 (`pr/22-dashboard-admin`): posts (create, optimistic delete with `useOptimistic`) and admin role management. Probably split (22a, 22b, ...): ask the user.
 
 ## How to resume after `/clear`
 
@@ -70,7 +70,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 20b | Register form | ✅ PR #47 | `pages/RegisterPage.tsx` (lazy, nav link "Register"), `registerSchema` + shared `email` rule in `auth.schemas.ts`, `register()` + `fetchCsrfToken()` in `auth.api.ts`, `features/auth/auth.errors.ts` (`getAuthErrorMessage`, also used by `LoginPage`); ~160 inserted / ~25 deleted code lines |
 | 20c | GitHub login link + OAuth errors | ✅ PR #48 | `GITHUB_LOGIN_URL` in `auth.api.ts`, `API_ORIGIN` export in `config/http.ts`, `getOAuthErrorMessage(code)` in `auth.errors.ts`, `LoginPage` reads `?error=` (`useSearchParams`) and removes it on submit |
 | 21a | Auth interceptors | ✅ PR #49 | `lib/http`: `interceptors` option (`onRequest`, `onResponseError` + `retry()`); `features/auth/auth.http.ts` (moved `authHttp` there from `config/http.ts`): token in memory, CSRF + refresh promises (single flight); `auth.api.ts` stores the token after login/register, no more CSRF fetch per POST; ~170 inserted / ~40 deleted code lines (over budget, accepted by the user with the 3-PR split) |
-| 21b | AuthProvider | 🔍 `pr/21b-auth-provider` | `features/auth/auth.context.ts` (`AuthContext`, `useAuth()`), `AuthProvider.tsx` (`user`, `isRestoring`, `login`, `register`, `logout`) in `main.tsx`; `refreshSession()` exported from `auth.http.ts` (shared single flight, returns the user); `restoreSession()` + `logout()` in `auth.api.ts`; header: guest links vs name + "Log out"; Log in / Register submit disabled while restoring; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
+| 21b | AuthProvider | ✅ PR #50 | `features/auth/auth.context.ts` (`AuthContext`, `useAuth()`), `AuthProvider.tsx` (`user`, `isRestoring`, `login`, `register`, `logout`) in `main.tsx`; `refreshSession()` exported from `auth.http.ts` (shared single flight, returns the user); `restoreSession()` + `logout()` in `auth.api.ts`; header: guest links vs name + "Log out"; Log in / Register submit disabled while restoring; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
+| 21c | Route guards | 🔍 `pr/21c-route-guards` | `router/GuestRoute.tsx` (+ `getSafeRedirectPath`), `router/ProtectedRoute.tsx` (`?redirectTo=`), `router/RequireRole.tsx` (`allowedRoles`), pathless groups in `routes.tsx`; lazy `DashboardPage` + `AdminPage` (placeholders for step 22), Dashboard/Admin nav links; forms lose `disabled={isRestoring}` and register's `reset()`; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
 
 ## Decisions (and why)
 
@@ -834,14 +835,33 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Auth code is now eager (21b):** `main.tsx` → `AuthProvider` → `auth.http.ts` → `config/http.ts`, so a production build
   without `VITE_API_ORIGIN` now throws when the app starts (blank page + console error), not only on the Components page.
   Failing loudly is intended: a misconfigured deploy must not quietly call localhost.
+- **Route guards (21c):** three components in `src/router/` (app glue: they use `useAuth()` and `PATHS`, so not a
+  portable module), each a pathless layout route rendering `<Outlet />`. `ProtectedRoute` and `GuestRoute` show a
+  spinner while `isRestoring` (without it, every reload of a protected page would go to login). `RequireRole` is nested
+  inside `ProtectedRoute` (so it never waits itself), takes `allowedRoles` (same name as the API's `authorize()`), shows
+  an inline "No access" (no redirect; hiding that `/admin` exists is pointless, the bundle is public) and fails closed if
+  `user` is null. All redirects use `replace` (Back does not land on a page that only redirects again).
+  **Redirect after login lives in `GuestRoute`, not in the forms:** once `login()` sets the user, the guard re-renders
+  and navigates, so login, register and an already-logged-in visit to `/login` share one code path. This also closes
+  21b's "login during the session check": the forms are not rendered while `isRestoring`, so `disabled={isRestoring}`
+  and register's `reset()` were removed. OAuth still lands on `/` (the API's fixed redirect), so `redirectTo` is lost there; accepted.
+  **Open redirect check (`getSafeRedirectPath` in `GuestRoute.tsx`, one call site, so not a `lib` module):**
+  `new URL(redirectTo, window.location.origin)`, accepted only if the origin is ours AND the path does not start with
+  `//` (`/.//evil.example` keeps our origin but normalizes to the path `//evil.example`; found while testing);
+  anything else (incl. a parse error) → `PATHS.dashboard`. Kept: path + query + hash. A named function despite one
+  call site (deliberate exception to the style rule: a security check reads worse inline, and step 34 can test it).
+  React Router 7.18+ itself throws "External navigation is not allowed" on an external `<Navigate>` (error page, found
+  in code review), so our check is what turns a bad value into the dashboard, and it still protects a `window.location` redirect.
+  Accepted edge cases: logging out on a protected page leads to `/login?redirectTo=<that page>` (the next login on that
+  browser lands there); going from login to "Register" drops `redirectTo`.
+  `DashboardPage` and `AdminPage` are small lazy placeholders so the guards have something to protect; step 22 fills them.
+  Header: "Dashboard" for any user, "Admin" for admins only (UX only).
 
 ## Known gaps (fixed in later steps)
 
-- **Login during the session check (21b, low):** blocked only by the disabled submit button; a crafted double request
-  could still race it. Which `Set-Cookie` wins cannot be decided on the client. 21c's GuestRoute (waits for `isRestoring`) closes it for the UI.
 - **Header can show a dead session (21b):** when a refresh fails with 401 during normal use (session revoked or expired),
   `auth.http.ts` clears the access token, but `AuthProvider` still has the `user`, so the header shows the name until
-  the next reload or logout. Fix idea: `auth.http.ts` notifies a listener (`onSessionEnded`) that the provider subscribes to.
+  the next reload or logout; since 21c the route guards also keep showing protected pages (their API calls fail with 401). Fix idea: `auth.http.ts` notifies a listener (`onSessionEnded`) that the provider subscribes to.
 
 - **Cross-tab refresh (10a → 21a):** single flight works per tab. Two tabs whose tokens expire together send two refreshes
   with the same cookie, both get `REUSED`, and the family is revoked (logout). No server grace period on purpose. Fix idea: Web Locks API
@@ -1002,9 +1022,6 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **GitHub link shows even when GitHub is not configured (20c):** without `GITHUB_CLIENT_ID`/`SECRET` the API has no
   `/api/auth/oauth/github` route, so the link opens the API's JSON 404. The frontend cannot know; a `VITE_*` flag or a
   `GET /api/auth/providers` list would fix it. Not planned (the demo setup documents the GitHub OAuth App).
-- **Login and register stay on the page after success (20a/20b → step 21):** there is no auth state yet, so nothing
-  redirects. Register empties the form (`reset()`, 20b review: a second click got 409 and used a register try); login
-  keeps it (a second click only starts another session). Step 21's GuestRoute + safe redirect replaces this.
 - **`ApiError.details` items are trusted by `lib/http` (18a code review; for forms handled in 20a):** the client only
   checks `Array.isArray`. `lib/forms` `applyServerErrors` checks each item (`{ field: string, message: string }`);
   any other code that reads `details` must check them too.

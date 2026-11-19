@@ -11,12 +11,11 @@ import { ApiError } from '@/lib/http';
 // Lazy loaded, like the login page (both share the react-hook-form + Zod chunk).
 export default function RegisterPage() {
   // Renamed: react-hook-form's `register` (below) connects inputs to the form.
-  const { register: registerAccount, isRestoring } = useAuth();
+  const { register: registerAccount } = useAuth();
   const {
     register,
     handleSubmit,
     setError,
-    reset,
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
@@ -26,9 +25,8 @@ export default function RegisterPage() {
   async function onSubmit(values: RegisterInput) {
     try {
       const user = await registerAccount(values);
+      // GuestRoute redirects on success, so the form is gone and cannot be sent a second time.
       toast.success(`Welcome, ${user.name}! Your account is ready.`);
-      // Empty the form: a second click would get 409 EMAIL_TAKEN and use up one of the 5 register tries per hour.
-      reset();
     } catch (error) {
       if (applyServerErrors(error, setError, ['name', 'email', 'password'])) {
         return;
@@ -63,8 +61,7 @@ export default function RegisterPage() {
           >
             {(control) => <Input {...control} {...register('password')} type="password" autoComplete="new-password" />}
           </FormField>
-          {/* Not during the session check (same reason as on the login page). */}
-          <Button type="submit" isLoading={isSubmitting} disabled={isRestoring}>
+          <Button type="submit" isLoading={isSubmitting}>
             Create account
           </Button>
         </form>
