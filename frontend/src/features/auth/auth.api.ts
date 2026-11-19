@@ -1,4 +1,4 @@
-import { authHttp } from '@/config/http';
+import { API_ORIGIN, authHttp } from '@/config/http';
 import type { LoginInput, RegisterInput } from './auth.schemas';
 
 export type AuthUser = {
@@ -7,6 +7,9 @@ export type AuthUser = {
   name: string;
   role: 'user' | 'admin';
 };
+
+// The API's start route: it sets the state + PKCE cookie and redirects to GitHub.
+export const GITHUB_LOGIN_URL = `${API_ORIGIN}/api/auth/oauth/github`;
 
 type AuthResponse = {
   accessToken: string;

@@ -22,3 +22,19 @@ export function getAuthErrorMessage(error: unknown): string {
   }
   return GENERIC_MESSAGE;
 }
+
+// After a failed GitHub login, the API sends the browser back to /login?error=<code>. Anyone can craft that URL,
+// so only these known codes get a message; the text in the URL is never shown (no fake messages on our page).
+const OAUTH_ERROR_MESSAGES = new Map([
+  ['OAUTH_FAILED', 'GitHub login did not work. Please try again.'],
+  ['OAUTH_DENIED', 'GitHub login was cancelled.'],
+  ['OAUTH_EMAIL_TAKEN', 'An account with this email already exists. Log in the way you signed up.'],
+]);
+
+// `undefined` when there is no code or an unknown one: then the page shows nothing.
+export function getOAuthErrorMessage(code: string | null): string | undefined {
+  if (code === null) {
+    return undefined;
+  }
+  return OAUTH_ERROR_MESSAGES.get(code);
+}
