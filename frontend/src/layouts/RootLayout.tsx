@@ -1,15 +1,23 @@
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { NavLink, Outlet } from 'react-router';
-import { Spinner } from '@/components/ui';
+import { toast } from 'sonner';
+import { Button, Spinner } from '@/components/ui';
+import { useAuth } from '@/features/auth/auth.context';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { cn } from '@/lib/cn';
 import { ComponentsPage, LoginPage, RegisterPage } from '@/router/lazy-pages';
 import { PATHS } from '@/router/paths';
 
+type NavLinkItem = { to: string; label: string; preload?: () => void };
+
 // `preload` only for lazy pages; Home is already in the first download.
-const NAV_LINKS: { to: string; label: string; preload?: () => void }[] = [
+const NAV_LINKS: NavLinkItem[] = [
   { to: PATHS.home, label: 'Home' },
   { to: PATHS.components, label: 'Components', preload: ComponentsPage.preload },
+];
+
+// Only for visitors who are not logged in.
+const GUEST_LINKS: NavLinkItem[] = [
   { to: PATHS.login, label: 'Log in', preload: LoginPage.preload },
   { to: PATHS.register, label: 'Register', preload: RegisterPage.preload },
 ];
@@ -17,6 +25,23 @@ const NAV_LINKS: { to: string; label: string; preload?: () => void }[] = [
 // Shared frame for every page: the header stays mounted while <Outlet /> swaps the page below it.
 export function RootLayout() {
   const isOnline = useOnlineStatus();
+  const { user, isRestoring, logout } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  // Hidden while the session check runs, so a logged-in user does not see "Log in" flash on every page load.
+  const showGuestLinks = !isRestoring && user === null;
+  const links = showGuestLinks ? [...NAV_LINKS, ...GUEST_LINKS] : NAV_LINKS;
+
+  async function handleLogout() {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      toast.success('Logged out');
+    } catch {
+      toast.error('Could not log out. Please try again.');
+    } finally {
+      setIsLoggingOut(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -25,8 +50,8 @@ export function RootLayout() {
           See-through + blur shows the page scrolling under it. Browsers without backdrop-filter get an almost solid
           background instead, so the links stay readable over the page text. */}
       <header className="sticky top-0 z-10 border-b border-gray-200 bg-white/95 backdrop-blur-md supports-[backdrop-filter]:bg-white/70">
-        <nav aria-label="Main" className="mx-auto flex max-w-2xl gap-4 px-8 py-3">
-          {NAV_LINKS.map((link) => (
+        <nav aria-label="Main" className="mx-auto flex max-w-2xl items-center gap-4 px-8 py-3">
+          {links.map((link) => (
             <NavLink
               key={link.to}
               to={link.to}
@@ -43,6 +68,15 @@ export function RootLayout() {
               {link.label}
             </NavLink>
           ))}
+          {user && (
+            <div className="ml-auto flex items-center gap-3">
+              {/* Plain text in JSX: React escapes it, so a name like "<img onerror=...>" is shown, never run. */}
+              <span className="text-sm text-gray-700">{user.name}</span>
+              <Button variant="secondary" size="sm" isLoading={isLoggingOut} onClick={handleLogout}>
+                Log out
+              </Button>
+            </div>
+          )}
         </nav>
         {/* A live region is only announced reliably if it is already on the page when its text changes,
             so this wrapper always stays mounted and only the message inside comes and goes. */}

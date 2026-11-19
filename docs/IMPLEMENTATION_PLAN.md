@@ -66,8 +66,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 20a | `pr/20a-login-form` | react-hook-form + Zod, server validation errors mapped to fields, login form (lazy page). Minimal real submit: `headers` option in `lib/http`, `authHttp` client (`credentials: 'include'`), CSRF token fetched before the POST (step 21 replaces that) | `lib/forms` | S1 | ✅ |
 | 20b | `pr/20b-register-form` | Register form (same rules as the server's `registerSchema`, `EMAIL_TAKEN` on the email field) | – | S1 | ✅ |
 | 20c | `pr/20c-oauth-login` | "Log in with GitHub" link (a plain `<a href>`, not fetch) and the `/login?error=OAUTH_FAILED \| OAUTH_DENIED \| OAUTH_EMAIL_TAKEN` messages (from 13c) | – | S1, S2 | ✅ |
-| 21a | `pr/21a-auth-interceptors` | Interceptors in `lib/http` (`onRequest`, `onResponseError` + `retry()`), access token in memory, cached CSRF token (new one after `CSRF_INVALID`), single-flight refresh + one retry after `TOKEN_EXPIRED` (`features/auth/auth.http.ts`) | `lib/http` (interceptors) | S1, S2 | 🔍 |
-| 21b | `pr/21b-auth-provider` | AuthProvider + `useAuth`: restore the session on load (`POST /refresh`), login/register/logout, user + "Log out" in the header | – | S1, S2 | ⬜ |
+| 21a | `pr/21a-auth-interceptors` | Interceptors in `lib/http` (`onRequest`, `onResponseError` + `retry()`), access token in memory, cached CSRF token (new one after `CSRF_INVALID`), single-flight refresh + one retry after `TOKEN_EXPIRED` (`features/auth/auth.http.ts`) | `lib/http` (interceptors) | S1, S2 | ✅ |
+| 21b | `pr/21b-auth-provider` | AuthProvider + `useAuth`: restore the session on load (`POST /refresh`), login/register/logout, user + "Log out" in the header | – | S1, S2 | 🔍 |
 | 21c | `pr/21c-route-guards` | ProtectedRoute, GuestRoute, RequireRole as route groups in `src/router/routes.tsx`, safe redirect after login | – | S1, S2 | ⬜ |
 | 22 | `pr/22-dashboard-admin` | Posts (create, optimistic delete with `useOptimistic`), admin role management | – | S2, P1 | ⬜ |
 | 23 | `pr/23-security-demo` | Demos: XSS (React escaping vs DOMPurify), dangerous URLs, CSRF, rate limit, CSP in `vite preview` | `lib/sanitize` | S1, S3 | ⬜ |

@@ -1,6 +1,7 @@
 // App glue: the HTTP client for calls that need the user's session (cookies, access token, CSRF token).
 import { API_ORIGIN } from '@/config/http';
 import { ApiError, createHttpClient, type ErrorContext, type RequestContext } from '@/lib/http';
+import type { AuthUser } from './auth.api';
 
 const CSRF_PATH = '/api/auth/csrf';
 const REFRESH_PATH = '/api/auth/refresh';
@@ -11,6 +12,7 @@ type CsrfResponse = {
 
 type RefreshResponse = {
   accessToken: string;
+  user: AuthUser;
 };
 
 // Only in memory, never localStorage: any script that runs on the page (an XSS) can read localStorage.
@@ -18,7 +20,7 @@ type RefreshResponse = {
 let accessToken: string | undefined;
 // Promises, not values: requests that start at the same time wait for ONE fetch instead of each sending their own.
 let csrfTokenPromise: Promise<string> | undefined;
-let refreshPromise: Promise<void> | undefined;
+let refreshPromise: Promise<RefreshResponse> | undefined;
 
 export function setAccessToken(token: string | undefined) {
   accessToken = token;
@@ -36,11 +38,15 @@ async function fetchCsrfToken(): Promise<string> {
   }
 }
 
-async function refreshAccessToken(): Promise<void> {
+async function refreshAccessToken(): Promise<RefreshResponse> {
   const tokenBeforeRefresh = accessToken;
   try {
     const response = await authHttp.request<RefreshResponse>(REFRESH_PATH, { method: 'POST' });
-    accessToken = response.accessToken;
+    // A login or logout that finished during the refresh wins: its token (or no token) must stay.
+    if (accessToken === tokenBeforeRefresh) {
+      accessToken = response.accessToken;
+    }
+    return response;
   } catch (error) {
     // Only a 401 means the session is over. After a network error or a 429 the next call can try again.
     // And a login that finished during the refresh set a NEW token, which must stay.
@@ -52,6 +58,16 @@ async function refreshAccessToken(): Promise<void> {
   } finally {
     refreshPromise = undefined;
   }
+}
+
+// Single flight: 5 requests that expire together send ONE refresh. Five would use the same refresh token
+// five times, and the server treats reuse as theft and ends the whole session.
+// Exported for the session restore on page load, which must share the same flight.
+export function refreshSession(): Promise<RefreshResponse> {
+  if (refreshPromise === undefined) {
+    refreshPromise = refreshAccessToken();
+  }
+  return refreshPromise;
 }
 
 async function addAuthHeaders({ method, headers }: RequestContext) {
@@ -81,12 +97,7 @@ async function handleAuthErrors(error: unknown, { path, retry }: ErrorContext) {
   // Never for the refresh itself, nor for the CSRF fetch that the refresh waits for: either would wait for itself forever.
   const isRefreshStep = path === REFRESH_PATH || path === CSRF_PATH;
   if (error.code === 'TOKEN_EXPIRED' && !isRefreshStep) {
-    // Single flight: 5 requests that expire together send ONE refresh. Five would use the same refresh token
-    // five times, and the server treats reuse as theft and ends the whole session.
-    if (refreshPromise === undefined) {
-      refreshPromise = refreshAccessToken();
-    }
-    await refreshPromise;
+    await refreshSession();
     return retry();
   }
   throw error;

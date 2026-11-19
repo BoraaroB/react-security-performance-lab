@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router/dom';
 import { Toaster } from 'sonner';
+import { AuthProvider } from '@/features/auth/AuthProvider';
 import { router } from '@/router';
 import '@/index.css';
 
@@ -26,7 +27,10 @@ const root = createRoot(rootElement, {
 // StrictMode runs effects twice in development, so a missing cleanup (a memory leak) shows up early.
 root.render(
   <StrictMode>
-    <RouterProvider router={router} />
+    {/* Around the router: every page and the layout can call useAuth(). */}
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
     {/* Toast notifications (sonner): call `toast(...)` from anywhere; no provider needed. */}
     <Toaster richColors closeButton />
   </StrictMode>,
