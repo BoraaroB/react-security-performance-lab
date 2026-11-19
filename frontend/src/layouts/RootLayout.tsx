@@ -3,7 +3,7 @@ import { NavLink, Outlet } from 'react-router';
 import { Spinner } from '@/components/ui';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { cn } from '@/lib/cn';
-import { ComponentsPage, LoginPage } from '@/router/lazy-pages';
+import { ComponentsPage, LoginPage, RegisterPage } from '@/router/lazy-pages';
 import { PATHS } from '@/router/paths';
 
 // `preload` only for lazy pages; Home is already in the first download.
@@ -11,6 +11,7 @@ const NAV_LINKS: { to: string; label: string; preload?: () => void }[] = [
   { to: PATHS.home, label: 'Home' },
   { to: PATHS.components, label: 'Components', preload: ComponentsPage.preload },
   { to: PATHS.login, label: 'Log in', preload: LoginPage.preload },
+  { to: PATHS.register, label: 'Register', preload: RegisterPage.preload },
 ];
 
 // Shared frame for every page: the header stays mounted while <Outlet /> swaps the page below it.

@@ -3,16 +3,9 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Alert, Button, Card, FormField, Input } from '@/components/ui';
 import { login } from '@/features/auth/auth.api';
+import { getAuthErrorMessage } from '@/features/auth/auth.errors';
 import { loginSchema, type LoginInput } from '@/features/auth/auth.schemas';
 import { applyServerErrors } from '@/lib/forms';
-import { ApiError, NetworkError, TimeoutError } from '@/lib/http';
-
-// Text by error code, never the server's message: that is written for developers and can change.
-// A Map, not an object: a code like "__proto__" from an odd error body must not find Object.prototype.
-const LOGIN_ERROR_MESSAGES = new Map([
-  ['INVALID_CREDENTIALS', 'Wrong email or password.'],
-  ['RATE_LIMITED', 'Too many login attempts. Wait a few minutes and try again.'],
-]);
 
 // Lazy loaded: react-hook-form and Zod are downloaded only by visitors who open this page.
 export default function LoginPage() {
@@ -35,14 +28,7 @@ export default function LoginPage() {
       if (applyServerErrors(error, setError, ['email', 'password'])) {
         return;
       }
-      let message = 'Something went wrong. Please try again.';
-      if (error instanceof ApiError) {
-        message = LOGIN_ERROR_MESSAGES.get(error.code) ?? message;
-      } else if (error instanceof TimeoutError) {
-        message = 'The server took too long to answer. Please try again.';
-      } else if (error instanceof NetworkError) {
-        message = 'The server could not be reached. Check your connection.';
-      }
+      const message = getAuthErrorMessage(error);
       // `root.*` errors belong to the whole form; react-hook-form clears them on the next submit.
       setError('root.server', { message });
     }

@@ -63,8 +63,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 18b | `pr/18b-http-retry` | Retry + exponential backoff (safe methods only, honors `Retry-After`, abort cancels the wait) | `lib/http` (extended) | S3 | ✅ |
 | 18c | `pr/18c-online-status` | `useOnlineStatus` (`useSyncExternalStore`) + offline banner in the layout | `hooks/useOnlineStatus` | DX | ✅ |
 | 19 | `pr/19-use-fetch` | `useFetch` with AbortController (no leaks), `ErrorState` with a retry button | `hooks/useFetch` | P3 | ✅ |
-| 20a | `pr/20a-login-form` | react-hook-form + Zod, server validation errors mapped to fields, login form (lazy page). Minimal real submit: `headers` option in `lib/http`, `authHttp` client (`credentials: 'include'`), CSRF token fetched before the POST (step 21 replaces that) | `lib/forms` | S1 | 🔍 |
-| 20b | `pr/20b-register-form` | Register form (same rules as the server's `registerSchema`, `EMAIL_TAKEN` on the email field) | – | S1 | ⬜ |
+| 20a | `pr/20a-login-form` | react-hook-form + Zod, server validation errors mapped to fields, login form (lazy page). Minimal real submit: `headers` option in `lib/http`, `authHttp` client (`credentials: 'include'`), CSRF token fetched before the POST (step 21 replaces that) | `lib/forms` | S1 | ✅ |
+| 20b | `pr/20b-register-form` | Register form (same rules as the server's `registerSchema`, `EMAIL_TAKEN` on the email field) | – | S1 | 🔍 |
 | 20c | `pr/20c-oauth-login` | "Log in with GitHub" link (a plain `<a href>`, not fetch) and the `/login?error=OAUTH_FAILED \| OAUTH_DENIED \| OAUTH_EMAIL_TAKEN` messages (from 13c) | – | S1, S2 | ⬜ |
 | 21 | `pr/21-auth-client` | In-memory token, single-flight refresh, CSRF header, AuthProvider, ProtectedRoute, GuestRoute, RequireRole as route groups in `src/router/routes.tsx`, safe redirect | `lib/http` (auth plugin) | S1, S2 | ⬜ |
 | 22 | `pr/22-dashboard-admin` | Posts (create, optimistic delete with `useOptimistic`), admin role management | – | S2, P1 | ⬜ |

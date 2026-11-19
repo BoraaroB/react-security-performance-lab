@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 19 (`pr/19-use-fetch`, PR #45).
-- **In review:** step 20a (`pr/20a-login-form`): react-hook-form + Zod, `lib/forms` (`applyServerErrors`), lazy `/login` page with a real (temporary) CSRF + login call.
-- **Next:** step 20b (`pr/20b-register-form`): register form. Then 20c (GitHub link + `?error=OAUTH_*` messages), then 21 (auth client).
+- **Last merged:** step 20a (`pr/20a-login-form`, PR #46).
+- **In review:** step 20b (`pr/20b-register-form`): lazy `/register` page, `registerSchema` in the browser, `EMAIL_TAKEN` on the email field, shared `getAuthErrorMessage`.
+- **Next:** step 20c (`pr/20c-oauth-login`): "Log in with GitHub" link + `/login?error=OAUTH_*` messages. Then 21 (auth client).
 
 ## How to resume after `/clear`
 
@@ -66,7 +66,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 18b | HTTP retry | ✅ PR #43 | `lib/http/retry.ts` (`parseRetryAfterMs`, `getRetryDelayMs`, `wait`), `request` loops over `requestOnce`; options `retries` (2) + `maxRetryDelayMs` (10 s); `ApiError.retryAfterMs` |
 | 18c | Online status | ✅ PR #44 | `hooks/useOnlineStatus` (first `src/hooks/` module; `useSyncExternalStore`, server snapshot `true`), amber banner in the sticky header (`role="status"` wrapper always mounted) |
 | 19 | useFetch + ErrorState | ✅ PR #45 | `hooks/useFetch` (`useFetch<T>(http, path)` → `{ data, error, isLoading, reload }`), `components/feedback/ErrorState` (text by error type, code + request ID, "Try again"), `HealthWidget` demo card on `/components`; one PR (~220 lines incl. READMEs, user's choice) |
-| 20a | Login form | 🔍 `pr/20a-login-form` | `react-hook-form` 7.91, `zod` 4.6, `@hookform/resolvers` 5.9; `lib/forms` (`applyServerErrors`), `features/auth/` (`auth.schemas.ts`, `auth.api.ts`), lazy `pages/LoginPage.tsx`, `headers` request option in `lib/http`, `authHttp` in `config/http.ts`; ~170 code lines + 2 READMEs (over the ~150 budget, accepted with the user's split choice) |
+| 20a | Login form | ✅ PR #46 | `react-hook-form` 7.91, `zod` 4.6, `@hookform/resolvers` 5.9; `lib/forms` (`applyServerErrors`), `features/auth/` (`auth.schemas.ts`, `auth.api.ts`), lazy `pages/LoginPage.tsx`, `headers` request option in `lib/http`, `authHttp` in `config/http.ts`; ~170 code lines + 2 READMEs (over the ~150 budget, accepted with the user's split choice) |
+| 20b | Register form | 🔍 `pr/20b-register-form` | `pages/RegisterPage.tsx` (lazy, nav link "Register"), `registerSchema` + shared `email` rule in `auth.schemas.ts`, `register()` + `fetchCsrfToken()` in `auth.api.ts`, `features/auth/auth.errors.ts` (`getAuthErrorMessage`, also used by `LoginPage`); ~160 inserted / ~25 deleted code lines |
 
 ## Decisions (and why)
 
@@ -744,6 +745,18 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   they come from our own server's Zod schema (no `code` per field) and are rendered as text. `/login` is LAZY and
   preloaded from the nav link: the page chunk is 121 kB (38 kB gzip, mostly Zod), the main file stays 384 kB. Zod Mini
   (`zod/mini`, smaller, tree-shakable) can be measured in step 24.
+- **Register form (step 20b):** `registerSchema` mirrors the server's: name trimmed, 1–100 characters, no control or
+  invisible characters (`NO_CONTROL_CHARACTERS`, `\p{Cc}\p{Cf}`; the server also normalizes to NFC, the browser does
+  not); password ≥ 15 Unicode code points (`[...value]`) and ≤ 72 UTF-8 bytes (`TextEncoder`, the browser's
+  `Buffer.byteLength`). `email` is one shared rule for both schemas. `409 EMAIL_TAKEN` has no `details`, so the page
+  puts it on the email field itself (text by `code`, focused). Success = the user is logged in at once (the server sets
+  the refresh cookie); toast "Welcome, <name>!", the access token is dropped until step 21. The form-level error text
+  (`INVALID_CREDENTIALS`, `RATE_LIMITED`, timeout, network, generic) moved to `features/auth/auth.errors.ts`
+  `getAuthErrorMessage(error)` (two pages + `OAUTH_*` codes in 20c; a `Map`, see the 20a review). The CSRF fetch is
+  `fetchCsrfToken()` in `auth.api.ts` (login + register). The `RATE_LIMITED` text no longer says "a few minutes":
+  the register limit is 5 per HOUR. A nav link "Register" (with preload) instead of "No account? Create one" links
+  inside the pages: kept the PR under budget; step 21 reworks the nav anyway (GuestRoute). react-hook-form + Zod +
+  the schemas are now one shared chunk (120 kB, 38 kB gzip) used by both pages; each page chunk is ~1.5 kB.
 - **ErrorState (step 19):** `src/components/feedback/ErrorState/` on top of `Alert` (error = `role="alert"`) +
   `Button size="sm"`. Exception to portable-module rule 2 (only `lib` dependencies): it imports `components/ui`
   on purpose, to reuse the `Alert` role and colors (its README lists it under `components:`; 19 code review). Text by type: `NetworkError`, `TimeoutError`, `ApiError` 429, `ApiError` ≥ 500, else generic;
@@ -924,6 +937,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **No runtime check of API responses (18a):** `request<T>` trusts the server's JSON shape; a changed API gives a
   wrong type at runtime, not a clear error. A Zod schema per call (step 20 adds Zod to the frontend) would fix it.
 - **`AbortSignal.any` needs Safari 17.4+ (18a):** older browsers fail every request with a `TypeError` (`AbortSignal.any is not a function`). Accepted (no polyfill, no `browserslist` target yet).
+- **Login and register stay on the page after success (20a/20b → step 21):** there is no auth state yet, so nothing
+  redirects. Register empties the form (`reset()`, 20b review: a second click got 409 and used a register try); login
+  keeps it (a second click only starts another session). Step 21's GuestRoute + safe redirect replaces this.
 - **`ApiError.details` items are trusted by `lib/http` (18a code review; for forms handled in 20a):** the client only
   checks `Array.isArray`. `lib/forms` `applyServerErrors` checks each item (`{ field: string, message: string }`);
   any other code that reads `details` must check them too.

@@ -5,3 +5,4 @@ import { lazyWithPreload } from '@/lib/lazy-with-preload';
 // Kept apart from routes.tsx so the layout can import them for preloading without a circular import.
 export const ComponentsPage = lazyWithPreload(() => import('@/pages/ComponentsPage'));
 export const LoginPage = lazyWithPreload(() => import('@/pages/LoginPage'));
+export const RegisterPage = lazyWithPreload(() => import('@/pages/RegisterPage'));
