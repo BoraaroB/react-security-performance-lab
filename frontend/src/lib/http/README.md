@@ -34,7 +34,8 @@ try {
 | `retries` | `number` | `2` | Extra attempts for a GET (see "Retries"), a whole number ≥ 0. Can be overridden per request (`retries: 0` turns it off). |
 | `maxRetryDelayMs` | `number` | `10000` | The longest wait between attempts. A longer `Retry-After` from the server means "do not retry". |
 
-`request<T>(path, { method?, body?, signal?, timeoutMs?, retries? })`: `body` is sent as JSON (a GET with a body throws). Returns the parsed JSON
+`request<T>(path, { method?, body?, headers?, signal?, timeoutMs?, retries? })`: `body` is sent as JSON (a GET with a body throws);
+`headers` adds request headers, e.g. `{ 'X-CSRF-Token': token }` (`Accept` is always `application/json`). Returns the parsed JSON
 (`undefined` for an empty body, e.g. 204). The result is NOT validated at runtime; `T` is a promise, not a check.
 
 ## Errors

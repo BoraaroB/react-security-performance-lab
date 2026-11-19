@@ -15,12 +15,15 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.9.2",
     "clsx": "^2.1.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "react-hook-form": "^7.91.0",
     "react-router": "^7.18.5",
     "sonner": "^2.0.8",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

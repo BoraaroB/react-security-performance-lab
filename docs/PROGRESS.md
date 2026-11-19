@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 18c (`pr/18c-online-status`, PR #44). Phase A (Express backend) is complete.
-- **In review:** step 19 (`pr/19-use-fetch`): `hooks/useFetch` (AbortController, `requestNumber`, `reload`) + `components/feedback/ErrorState`.
-- **Next:** step 20 (`pr/20-forms`): react-hook-form + Zod, server errors mapped to fields, login and register forms, GitHub login link.
+- **Last merged:** step 19 (`pr/19-use-fetch`, PR #45).
+- **In review:** step 20a (`pr/20a-login-form`): react-hook-form + Zod, `lib/forms` (`applyServerErrors`), lazy `/login` page with a real (temporary) CSRF + login call.
+- **Next:** step 20b (`pr/20b-register-form`): register form. Then 20c (GitHub link + `?error=OAUTH_*` messages), then 21 (auth client).
 
 ## How to resume after `/clear`
 
@@ -65,7 +65,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 18a | HTTP client core | ✅ PR #42 | `lib/http` (`createHttpClient({ apiOrigin })` → `request<T>`; `ApiError`/`NetworkError`/`TimeoutError`), `src/config/http.ts` (`VITE_API_ORIGIN`), demo card on `/components` |
 | 18b | HTTP retry | ✅ PR #43 | `lib/http/retry.ts` (`parseRetryAfterMs`, `getRetryDelayMs`, `wait`), `request` loops over `requestOnce`; options `retries` (2) + `maxRetryDelayMs` (10 s); `ApiError.retryAfterMs` |
 | 18c | Online status | ✅ PR #44 | `hooks/useOnlineStatus` (first `src/hooks/` module; `useSyncExternalStore`, server snapshot `true`), amber banner in the sticky header (`role="status"` wrapper always mounted) |
-| 19 | useFetch + ErrorState | 🔍 `pr/19-use-fetch` | `hooks/useFetch` (`useFetch<T>(http, path)` → `{ data, error, isLoading, reload }`), `components/feedback/ErrorState` (text by error type, code + request ID, "Try again"), `HealthWidget` demo card on `/components`; one PR (~220 lines incl. READMEs, user's choice) |
+| 19 | useFetch + ErrorState | ✅ PR #45 | `hooks/useFetch` (`useFetch<T>(http, path)` → `{ data, error, isLoading, reload }`), `components/feedback/ErrorState` (text by error type, code + request ID, "Try again"), `HealthWidget` demo card on `/components`; one PR (~220 lines incl. READMEs, user's choice) |
+| 20a | Login form | 🔍 `pr/20a-login-form` | `react-hook-form` 7.91, `zod` 4.6, `@hookform/resolvers` 5.9; `lib/forms` (`applyServerErrors`), `features/auth/` (`auth.schemas.ts`, `auth.api.ts`), lazy `pages/LoginPage.tsx`, `headers` request option in `lib/http`, `authHttp` in `config/http.ts`; ~170 code lines + 2 READMEs (over the ~150 budget, accepted with the user's split choice) |
 
 ## Decisions (and why)
 
@@ -722,6 +723,27 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   props" pattern; ESLint accepts it). A key built from the path instead would repeat on A → B → A and show A's old
   answer as current (19 code review). The `http` client must be stable (module level): it is an effect dependency. On reload or a new path, `data` goes back to `undefined` (no stale-while-revalidate). GET only, no
   cache (writes are called from event handlers). In dev, StrictMode shows one "(canceled)" request per mount.
+- **Step 20 split (user's choice, 2026-11-19):** 20a = form library + `lib/forms` + login form, 20b = register
+  form, 20c = "Log in with GitHub" link + `?error=OAUTH_*` messages. The plan's step 20 was ~350 lines and 3 concepts.
+- **Login submits for real before step 21 (user's choice, 2026-11-19):** the server requires CSRF on login, so 20a
+  adds the smallest thing that makes it work: a `headers` request option in `lib/http` and `authHttp`
+  (`credentials: 'include'`, only for `/api/auth/*`; the default `http` client stays `'same-origin'`).
+  `features/auth/auth.api.ts` `login()` calls `GET /api/auth/csrf` before every POST (sets the `__Host-csrf` cookie,
+  returns the token) and sends `X-CSRF-Token`. **Step 21 replaces this** with the token kept in memory (auth option or
+  interceptors, see the memory note) and also keeps the access token: in 20a the token from the login answer is dropped
+  and the page only shows `toast.success('Logged in as <name>')`.
+- **Forms (step 20a):** react-hook-form + `zodResolver`. The browser schema (`features/auth/auth.schemas.ts`) mirrors
+  the server's rules where they help the user; the server checks everything again (the login password has no max in
+  the browser, so a 73+ character password shows the server's rule on the field). `<form noValidate>`: Zod messages,
+  not the browser's bubbles, linked to the input by `FormField`. `lib/forms` `applyServerErrors(error, setError,
+  fieldNames)` puts `ApiError.details` on the listed fields only (closes the 18a gap: each item is checked to be
+  `{ field: string, message: string }`), focuses the first, and returns `false` when nothing matched; the page then sets
+  `root.server` (cleared by react-hook-form on the next submit) with a text mapped from the `code`
+  (`INVALID_CREDENTIALS`, `RATE_LIMITED`), `TimeoutError`, `NetworkError`, or a generic one, shown in `Alert` (role
+  `alert`). **Exception to "map by code, never by text":** field `details` messages are shown as written, because
+  they come from our own server's Zod schema (no `code` per field) and are rendered as text. `/login` is LAZY and
+  preloaded from the nav link: the page chunk is 121 kB (38 kB gzip, mostly Zod), the main file stays 384 kB. Zod Mini
+  (`zod/mini`, smaller, tree-shakable) can be measured in step 24.
 - **ErrorState (step 19):** `src/components/feedback/ErrorState/` on top of `Alert` (error = `role="alert"`) +
   `Button size="sm"`. Exception to portable-module rule 2 (only `lib` dependencies): it imports `components/ui`
   on purpose, to reuse the `Alert` role and colors (its README lists it under `components:`; 19 code review). Text by type: `NetworkError`, `TimeoutError`, `ApiError` 429, `ApiError` ≥ 500, else generic;
@@ -902,6 +924,6 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **No runtime check of API responses (18a):** `request<T>` trusts the server's JSON shape; a changed API gives a
   wrong type at runtime, not a clear error. A Zod schema per call (step 20 adds Zod to the frontend) would fix it.
 - **`AbortSignal.any` needs Safari 17.4+ (18a):** older browsers fail every request with a `TypeError` (`AbortSignal.any is not a function`). Accepted (no polyfill, no `browserslist` target yet).
-- **`ApiError.details` items are trusted (18a code review):** only `Array.isArray` is checked, not that each item is
-  `{ field: string, message: string }`. Step 20 maps them to form fields: skip items without string `field`/`message`
-  there (or validate with Zod), so a proxy's odd body cannot crash the form.
+- **`ApiError.details` items are trusted by `lib/http` (18a code review; for forms handled in 20a):** the client only
+  checks `Array.isArray`. `lib/forms` `applyServerErrors` checks each item (`{ field: string, message: string }`);
+  any other code that reads `details` must check them too.

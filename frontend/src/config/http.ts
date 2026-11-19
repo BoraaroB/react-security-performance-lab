@@ -20,3 +20,7 @@ if (import.meta.env.PROD && apiUrl.protocol === 'http:' && apiUrl.hostname !== '
 }
 
 export const http = createHttpClient({ apiOrigin });
+
+// Only for /api/auth/*: the API is on another origin, and login needs its cookies (CSRF cookie sent, refresh cookie
+// received). Other calls keep 'same-origin', so they never carry cookies they do not need.
+export const authHttp = createHttpClient({ apiOrigin, credentials: 'include' });
