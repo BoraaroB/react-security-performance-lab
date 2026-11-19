@@ -3,12 +3,15 @@ import { RootLayout } from '@/layouts/RootLayout';
 import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
-import { ComponentsPage, LoginPage, RegisterPage } from '@/router/lazy-pages';
+import { GuestRoute } from '@/router/GuestRoute';
+import { AdminPage, ComponentsPage, DashboardPage, LoginPage, RegisterPage } from '@/router/lazy-pages';
 import { PATHS } from '@/router/paths';
+import { ProtectedRoute } from '@/router/ProtectedRoute';
+import { RequireRole } from '@/router/RequireRole';
 
 // Route config: plain objects, not JSON, so pages stay type-checked and can be lazy loaded.
 // The layout, home and 404 pages are NOT lazy: nearly every visit needs them for the first screen.
-// Public pages only for now; step 21 adds the ProtectedRoute / GuestRoute / RequireRole groups.
+// Access groups are pathless layout routes: the guard renders <Outlet /> (the page) or redirects.
 export const routes: RouteObject[] = [
   {
     path: PATHS.home,
@@ -33,13 +36,38 @@ export const routes: RouteObject[] = [
             path: PATHS.components,
             element: <ComponentsPage />,
           },
+          // Only for visitors who are not logged in.
           {
-            path: PATHS.login,
-            element: <LoginPage />,
+            element: <GuestRoute />,
+            children: [
+              {
+                path: PATHS.login,
+                element: <LoginPage />,
+              },
+              {
+                path: PATHS.register,
+                element: <RegisterPage />,
+              },
+            ],
           },
+          // Only for logged-in users; the admin group is nested, so it gets the login check too.
           {
-            path: PATHS.register,
-            element: <RegisterPage />,
+            element: <ProtectedRoute />,
+            children: [
+              {
+                path: PATHS.dashboard,
+                element: <DashboardPage />,
+              },
+              {
+                element: <RequireRole allowedRoles={['admin']} />,
+                children: [
+                  {
+                    path: PATHS.admin,
+                    element: <AdminPage />,
+                  },
+                ],
+              },
+            ],
           },
           // Catch-all: any other URL renders inside the layout, so the navigation stays usable.
           {

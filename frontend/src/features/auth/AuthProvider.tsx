@@ -4,7 +4,7 @@ import type { AuthUser } from './auth.api';
 import { AuthContext } from './auth.context';
 import type { LoginInput, RegisterInput } from './auth.schemas';
 
-// Holds who is logged in, so the header and (in step 21c) the route guards can read it with `useAuth()`.
+// Holds who is logged in, so the header and the route guards (src/router/) can read it with `useAuth()`.
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isRestoring, setIsRestoring] = useState(true);

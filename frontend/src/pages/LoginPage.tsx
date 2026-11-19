@@ -11,7 +11,7 @@ import { applyServerErrors } from '@/lib/forms';
 
 // Lazy loaded: react-hook-form and Zod are downloaded only by visitors who open this page.
 export default function LoginPage() {
-  const { login, isRestoring } = useAuth();
+  const { login } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const oauthErrorMessage = getOAuthErrorMessage(searchParams.get('error'));
   const {
@@ -36,6 +36,7 @@ export default function LoginPage() {
       );
     }
     try {
+      // On success GuestRoute sees the user and redirects (to `redirectTo` or the dashboard).
       const user = await login(values);
       toast.success(`Logged in as ${user.name}`);
     } catch (error) {
@@ -64,8 +65,7 @@ export default function LoginPage() {
               <Input {...control} {...register('password')} type="password" autoComplete="current-password" />
             )}
           </FormField>
-          {/* Not during the session check: its refresh could answer last and leave the OLD account's cookie behind. */}
-          <Button type="submit" isLoading={isSubmitting} disabled={isRestoring}>
+          <Button type="submit" isLoading={isSubmitting}>
             Log in
           </Button>
         </form>
