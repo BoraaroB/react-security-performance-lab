@@ -3,7 +3,7 @@ import { RootLayout } from '@/layouts/RootLayout';
 import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
-import { ComponentsPage, LoginPage } from '@/router/lazy-pages';
+import { ComponentsPage, LoginPage, RegisterPage } from '@/router/lazy-pages';
 import { PATHS } from '@/router/paths';
 
 // Route config: plain objects, not JSON, so pages stay type-checked and can be lazy loaded.
@@ -36,6 +36,10 @@ export const routes: RouteObject[] = [
           {
             path: PATHS.login,
             element: <LoginPage />,
+          },
+          {
+            path: PATHS.register,
+            element: <RegisterPage />,
           },
           // Catch-all: any other URL renders inside the layout, so the navigation stays usable.
           {
