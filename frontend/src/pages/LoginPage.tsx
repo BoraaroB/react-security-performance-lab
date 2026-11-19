@@ -3,13 +3,15 @@ import { useForm } from 'react-hook-form';
 import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { Alert, Button, Card, FormField, Input } from '@/components/ui';
-import { GITHUB_LOGIN_URL, login } from '@/features/auth/auth.api';
+import { GITHUB_LOGIN_URL } from '@/features/auth/auth.api';
+import { useAuth } from '@/features/auth/auth.context';
 import { getAuthErrorMessage, getOAuthErrorMessage } from '@/features/auth/auth.errors';
 import { loginSchema, type LoginInput } from '@/features/auth/auth.schemas';
 import { applyServerErrors } from '@/lib/forms';
 
 // Lazy loaded: react-hook-form and Zod are downloaded only by visitors who open this page.
 export default function LoginPage() {
+  const { login, isRestoring } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const oauthErrorMessage = getOAuthErrorMessage(searchParams.get('error'));
   const {
@@ -34,7 +36,7 @@ export default function LoginPage() {
       );
     }
     try {
-      const { user } = await login(values);
+      const user = await login(values);
       toast.success(`Logged in as ${user.name}`);
     } catch (error) {
       if (applyServerErrors(error, setError, ['email', 'password'])) {
@@ -62,7 +64,8 @@ export default function LoginPage() {
               <Input {...control} {...register('password')} type="password" autoComplete="current-password" />
             )}
           </FormField>
-          <Button type="submit" isLoading={isSubmitting}>
+          {/* Not during the session check: its refresh could answer last and leave the OLD account's cookie behind. */}
+          <Button type="submit" isLoading={isSubmitting} disabled={isRestoring}>
             Log in
           </Button>
         </form>

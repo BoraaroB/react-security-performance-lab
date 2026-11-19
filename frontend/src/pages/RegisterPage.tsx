@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Alert, Button, Card, FormField, Input } from '@/components/ui';
-import { register as registerAccount } from '@/features/auth/auth.api';
+import { useAuth } from '@/features/auth/auth.context';
 import { getAuthErrorMessage } from '@/features/auth/auth.errors';
 import { MIN_PASSWORD_CHARACTERS, registerSchema, type RegisterInput } from '@/features/auth/auth.schemas';
 import { applyServerErrors } from '@/lib/forms';
@@ -10,6 +10,8 @@ import { ApiError } from '@/lib/http';
 
 // Lazy loaded, like the login page (both share the react-hook-form + Zod chunk).
 export default function RegisterPage() {
+  // Renamed: react-hook-form's `register` (below) connects inputs to the form.
+  const { register: registerAccount, isRestoring } = useAuth();
   const {
     register,
     handleSubmit,
@@ -23,7 +25,7 @@ export default function RegisterPage() {
 
   async function onSubmit(values: RegisterInput) {
     try {
-      const { user } = await registerAccount(values);
+      const user = await registerAccount(values);
       toast.success(`Welcome, ${user.name}! Your account is ready.`);
       // Empty the form: a second click would get 409 EMAIL_TAKEN and use up one of the 5 register tries per hour.
       reset();
@@ -61,7 +63,8 @@ export default function RegisterPage() {
           >
             {(control) => <Input {...control} {...register('password')} type="password" autoComplete="new-password" />}
           </FormField>
-          <Button type="submit" isLoading={isSubmitting}>
+          {/* Not during the session check (same reason as on the login page). */}
+          <Button type="submit" isLoading={isSubmitting} disabled={isRestoring}>
             Create account
           </Button>
         </form>

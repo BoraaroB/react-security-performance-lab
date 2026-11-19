@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 20c (`pr/20c-oauth-login`, PR #48).
-- **In review:** step 21a (`pr/21a-auth-interceptors`): interceptors in `lib/http`, access token in memory, cached CSRF token, single-flight refresh.
-- **Next:** step 21b (`pr/21b-auth-provider`): AuthProvider + `useAuth` (restore the session on load via `POST /refresh`, login/register/logout, user in the header). Then 21c (route guards + safe redirect).
+- **Last merged:** step 21a (`pr/21a-auth-interceptors`, PR #49).
+- **In review:** step 21b (`pr/21b-auth-provider`): `AuthProvider` + `useAuth()`, session restored on load via the shared single-flight refresh, logout, user + "Log out" in the header.
+- **Next:** step 21c (`pr/21c-route-guards`): ProtectedRoute / GuestRoute / RequireRole route groups (wait for `isRestoring`), safe redirect after login.
 
 ## How to resume after `/clear`
 
@@ -69,7 +69,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 20a | Login form | ✅ PR #46 | `react-hook-form` 7.91, `zod` 4.6, `@hookform/resolvers` 5.9; `lib/forms` (`applyServerErrors`), `features/auth/` (`auth.schemas.ts`, `auth.api.ts`), lazy `pages/LoginPage.tsx`, `headers` request option in `lib/http`, `authHttp` in `config/http.ts`; ~170 code lines + 2 READMEs (over the ~150 budget, accepted with the user's split choice) |
 | 20b | Register form | ✅ PR #47 | `pages/RegisterPage.tsx` (lazy, nav link "Register"), `registerSchema` + shared `email` rule in `auth.schemas.ts`, `register()` + `fetchCsrfToken()` in `auth.api.ts`, `features/auth/auth.errors.ts` (`getAuthErrorMessage`, also used by `LoginPage`); ~160 inserted / ~25 deleted code lines |
 | 20c | GitHub login link + OAuth errors | ✅ PR #48 | `GITHUB_LOGIN_URL` in `auth.api.ts`, `API_ORIGIN` export in `config/http.ts`, `getOAuthErrorMessage(code)` in `auth.errors.ts`, `LoginPage` reads `?error=` (`useSearchParams`) and removes it on submit |
-| 21a | Auth interceptors | 🔍 `pr/21a-auth-interceptors` | `lib/http`: `interceptors` option (`onRequest`, `onResponseError` + `retry()`); `features/auth/auth.http.ts` (moved `authHttp` there from `config/http.ts`): token in memory, CSRF + refresh promises (single flight); `auth.api.ts` stores the token after login/register, no more CSRF fetch per POST; ~170 inserted / ~40 deleted code lines (over budget, accepted by the user with the 3-PR split) |
+| 21a | Auth interceptors | ✅ PR #49 | `lib/http`: `interceptors` option (`onRequest`, `onResponseError` + `retry()`); `features/auth/auth.http.ts` (moved `authHttp` there from `config/http.ts`): token in memory, CSRF + refresh promises (single flight); `auth.api.ts` stores the token after login/register, no more CSRF fetch per POST; ~170 inserted / ~40 deleted code lines (over budget, accepted by the user with the 3-PR split) |
+| 21b | AuthProvider | 🔍 `pr/21b-auth-provider` | `features/auth/auth.context.ts` (`AuthContext`, `useAuth()`), `AuthProvider.tsx` (`user`, `isRestoring`, `login`, `register`, `logout`) in `main.tsx`; `refreshSession()` exported from `auth.http.ts` (shared single flight, returns the user); `restoreSession()` + `logout()` in `auth.api.ts`; header: guest links vs name + "Log out"; Log in / Register submit disabled while restoring; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
 
 ## Decisions (and why)
 
@@ -780,8 +781,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   one client from `VITE_API_ORIGIN`; default `http://localhost:4000` only in dev (`import.meta.env.DEV`); a production
   build without it throws when the module loads (no silent calls to localhost), and so does a plain `http://` origin
   other than `localhost` (same rule as the API's `CORS_ORIGINS`; tokens must not cross the network unencrypted). `VITE_*` values are public (in the
-  bundle): never secrets. Typed in `src/vite-env.d.ts`; `frontend/.env.example` documents it. Only the lazy
-  `ComponentsPage` imports the client today, so the throw would show the route error page there.
+  bundle): never secrets. Typed in `src/vite-env.d.ts`; `frontend/.env.example` documents it. Since 21b the auth client
+  loads with the app, so the throw stops the whole app from starting (see "Auth code is now eager (21b)").
 - **Installing with `--before` (step 14, new rule):** new frontend packages were installed with
   `npm install --before=<today minus 14 days>`, which also caps the TRANSITIVE dependencies at that date (the earlier
   rule only covered the direct ones). Use it for every later install too. `@vitejs/plugin-react` is 5.x (6.x needs Vite 8).
@@ -818,12 +819,34 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   The access token is cleared only when the refresh gets a 401 (the session is really over) AND the token did not
   change meanwhile (a login during the refresh wins). A network error, timeout, or 429 keeps it, so the next call tries again.
   No refresh for `/refresh` or `/csrf`: the refresh waits for the CSRF fetch, so either one would wait for itself.
+- **AuthProvider (21b):** the session restore on load calls the SAME single-flight `refreshSession()` as the
+  interceptor, so StrictMode's double effect (and a parallel `TOKEN_EXPIRED`) sends one refresh, not a reuse.
+  `restoreSession()`: 401 → `null` (logged out); any other error → also shown as logged out, the cookie is untouched, so a reload retries.
+  `isRestoring` is `true` until the first check ends; guest links are hidden until then (no "Log in" flash), and 21c guards must wait for it.
+  Login/Register submit is disabled while `isRestoring`: a login racing the load-time refresh could end with the old
+  account's cookie (the last `Set-Cookie` wins) under the new account's name. As a second guard, a successful refresh
+  writes its token only if no login/logout changed it meanwhile (also covers "logout during a refresh").
+  `logout()` forgets the token only AFTER the server answered 204; a failed logout keeps the user logged in and shows a toast
+  (a local-only logout would leave a live session in the cookie). Context value memoized (`useCallback` + `useMemo`; no React Compiler in this project).
+  `features/auth/` is app code, not a portable module (no README).
+- **Cross-tab refresh stays unsolved (user's choice, after 21a):** no Web Locks, BroadcastChannel, or server grace period.
+  Two tabs refreshing in the same moment is rare and fails safe (both are logged out). Do not propose it again in step 21.
+- **Auth code is now eager (21b):** `main.tsx` → `AuthProvider` → `auth.http.ts` → `config/http.ts`, so a production build
+  without `VITE_API_ORIGIN` now throws when the app starts (blank page + console error), not only on the Components page.
+  Failing loudly is intended: a misconfigured deploy must not quietly call localhost.
 
 ## Known gaps (fixed in later steps)
 
+- **Login during the session check (21b, low):** blocked only by the disabled submit button; a crafted double request
+  could still race it. Which `Set-Cookie` wins cannot be decided on the client. 21c's GuestRoute (waits for `isRestoring`) closes it for the UI.
+- **Header can show a dead session (21b):** when a refresh fails with 401 during normal use (session revoked or expired),
+  `auth.http.ts` clears the access token, but `AuthProvider` still has the `user`, so the header shows the name until
+  the next reload or logout. Fix idea: `auth.http.ts` notifies a listener (`onSessionEnded`) that the provider subscribes to.
+
 - **Cross-tab refresh (10a → 21a):** single flight works per tab. Two tabs whose tokens expire together send two refreshes
   with the same cookie, both get `REUSED`, and the family is revoked (logout). No server grace period on purpose. Fix idea: Web Locks API
-  (`navigator.locks.request('refresh', ...)`) or BroadcastChannel. Becomes visible in 21b (every tab refreshes on load).
+  (`navigator.locks.request('refresh', ...)`) or BroadcastChannel. Since 21b every tab also refreshes on load, so opening
+  two tabs at the exact same moment can log out. Not fixed, by the user's choice (see Decisions).
 - **Late 401 after a refresh (21a, low):** a request whose `TOKEN_EXPIRED` arrives after the shared refresh has already
   finished starts a second refresh (with the new cookie, so it works, only one extra call). Fix idea: compare the token
   the request was sent with to the current one and just retry. Accepted.
