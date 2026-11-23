@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 24b (`pr/24b-deferred-value`, PR #60).
-- **In review:** step 24c (`pr/24c-virtual-list`): portable `components/ui/VirtualList` + demo card on `/performance`.
-- **Next:** step 24d (`pr/24d-bundle-analysis`): bundle analysis (`rollup-plugin-visualizer`), `manualChunks`, dynamic import on click.
+- **Last merged:** step 24c (`pr/24c-virtual-list`, PR #61).
+- **In review:** step 24d (`pr/24d-bundle-analysis`): `npm run analyze` (`rollup-plugin-visualizer` → `frontend/stats.html`) + `react-router` production build in `vite build`.
+- **Next:** step 24e (`pr/24e-manual-chunks`): `manualChunks` vendor chunk.
 
 ## How to resume after `/clear`
 
@@ -81,7 +81,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 23d | CSP in `vite preview` | ✅ PR #58 | `vite.config.ts` = function of `mode` (`loadEnv` for `connect-src`), `preview.headers`: CSP (`script-src 'self'`, `style-src 'self'` + sonner hash + empty-string hash, `img-src 'self'`, `connect-src` API, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`), nosniff, Referrer-Policy, X-Frame-Options, COOP; `config/zod.ts` (`jitless`) imported first by both schema modules; sonner pinned to `2.0.8`; XssDemo text; ~85 code lines |
 | 24a | memo demo + `/performance` | ✅ PR #59 | `features/performance-demo/` (`ProductList.tsx` + `MemoProductList = memo(...)`, render counter = effect without deps writing to a DOM ref; `MemoDemo.tsx`: 5,000 products, three lists), lazy `pages/PerformancePage.tsx`, `PATHS.performance`, nav link "Performance"; ~140 code lines |
 | 24b | useDeferredValue demo | ✅ PR #60 | `features/performance-demo/SlowList.tsx` (memo list of 250 rows, ~1 ms pure CPU work each = small units React can pause between, result in `data-checksum`), `DeferredDemo.tsx` (checkbox: list gets `deferredQuery` or `query`, dimmed while stale), second card on `PerformancePage`; ~87 code lines |
-| 24c | VirtualList | 🔍 `pr/24c-virtual-list` | `components/ui/VirtualList/` (`core.ts` = `getVisibleRange()`, `VirtualList.tsx`: fixed row height, state = first visible row, absolute rows in a full-height inner box, `aria-posinset`/`aria-setsize`, focusable `role="group"` box with the label, first row clamped when items shrink), exported from `components/ui`; `features/performance-demo/VirtualListDemo.tsx` (10,000 rows, checkbox plain vs virtual), third card on `PerformancePage`; hand-written, no library; ~165 code lines + README |
+| 24c | VirtualList | ✅ PR #61 | `components/ui/VirtualList/` (`core.ts` = `getVisibleRange()`, `VirtualList.tsx`: fixed row height, state = first visible row, absolute rows in a full-height inner box, `aria-posinset`/`aria-setsize`, focusable `role="group"` box with the label, first row clamped when items shrink), exported from `components/ui`; `features/performance-demo/VirtualListDemo.tsx` (10,000 rows, checkbox plain vs virtual), third card on `PerformancePage`; hand-written, no library; ~165 code lines + README |
+| 24d | Bundle analysis + react-router prod build | 🔍 `pr/24d-bundle-analysis` | `rollup-plugin-visualizer` 7.1.3 (dev dependency), `npm run analyze` = `vite build --mode analyze` → `frontend/stats.html` (treemap, gzip sizes, opens the browser; outside `dist/`, git-ignored); `vite.config.ts`: exact-match aliases `react-router` / `react-router/dom` → `dist/production/` only when `command === 'build'`; main chunk 395.09 → 393.38 kB (gzip 125.21 → 124.61 kB); ~35 code lines |
 
 ## Decisions (and why)
 
@@ -857,7 +858,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   listener installed before app code (CDP `Page.addScriptToEvaluateOnNewDocument` with `source`): the `Log` domain
   does not show eval reports. Step 32 must copy the same policy.
 - **Step 24 split (user's choice):** 24a memo/useMemo/useCallback, 24b `useDeferredValue`, 24c `VirtualList`,
-  24d bundle analysis + `manualChunks` + dynamic import. The user approved `rollup-plugin-visualizer` (dev dependency)
+  24d bundle analysis + `manualChunks` + dynamic import. 24d was split again (user's choice, 3 PRs): 24d analyzer +
+  `react-router` production alias, 24e `manualChunks`, 24f dynamic `import()` on click. The user approved `rollup-plugin-visualizer` (dev dependency)
   for 24d.
 - **memo demo (24a):** the render counter is a `useEffect` WITHOUT a dependency array that writes `textContent` to a
   ref'd `Badge`: it counts committed renders, and state would loop (each count would cause a render). In development
@@ -880,7 +882,25 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   required (index keys mix up rows when items change). Measured in headless Chrome (production): ~16–21 rows in the
   DOM, 372 DOM elements on the page vs 10,339 with the plain list; switching to the plain list 46–61 ms (141–184 ms
   at 4× CPU slowdown) vs 5–14 ms (21–22 ms) back to virtual. `vite preview` needs port 5173 free (strictPort); use
-  `rowHeight` must not change while mounted (remount with `key={rowHeight}`; code review). `--port 5180` when the dev server is running (the API calls then fail CORS, the performance page does not need them).
+  `rowHeight` must not change while mounted (remount with `key={rowHeight}`; code review).
+  `--port 5180` when the dev server is running (the API calls then fail CORS, the performance page does not need them).
+- **Bundle analysis (24d):** `npm run analyze` uses `--mode analyze` (cross-platform, no env var); `NODE_ENV` is
+  still `production` (`import.meta.env.PROD` true), but `.env.production*` is NOT loaded in that mode (only `.env`,
+  `.env.local`, `.env.analyze*`), so shared values belong in `.env`. The run overwrites `dist/`: rebuild with
+  `npm run build` before deploying. `stats.html` is written next to `vite.config.ts` (absolute path; the plugin would
+  resolve a relative one against the cwd), never into `dist/`: it lists source paths. `open: true`: the build fails
+  only if the launcher cannot be started (measured on macOS with `open` hidden: `spawn open ENOENT`, after the file
+  was written); on Linux the `open` package ships its own `xdg-open` script, which usually fails silently (code
+  review, not run on Linux). The report shows sizes BEFORE minification (Rollup's rendered code), so its numbers
+  are larger than the chunks in `vite build`'s output. Top packages (rendered / gzip): react-dom 638 / 111 kB,
+  react-router 219 / 48, zod 217 / 55, react-hook-form 110 / 20, tailwind-merge 100 / 17, app code 85 / 34,
+  dompurify 82 / 22 (only the `SecurityPage` chunk), sonner 67 / 14.
+- **react-router production build (24d, closes the 16a gap):** the two builds differ ONLY in
+  `ENABLE_DEV_WARNINGS = true/false` (checked with `diff`), so the alias is safe; the minifier then drops the warning
+  branches and the "Hey developer 👋" default error UI text. Only for `vite build`: the dev server keeps the warnings.
+  Exact-match regexes, because a string alias `'react-router'` also matches `'react-router/dom'`. After a
+  react-router update, check that `dist/production/index.mjs` and `dom-export.mjs` still exist (the build fails if
+  not).
 
 ## Local state that is not in git
 
@@ -1126,10 +1146,6 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Sonner's injected `<style>` in nginx (23d → step 32):** solved for `vite preview` with two hashes (see Decisions,
   23d). Step 32 must copy the same `style-src` hashes into nginx, and the hash must be recomputed after every sonner
   update (sonner is pinned exactly for that reason).
-- **React Router ships its development build (16a code review → step 24):** `react-router` 7's `package.json`
-  `exports` has no `production` condition; every condition points to `dist/development/`, so Vite bundles the dev
-  build (dev warnings on, `console.error` on render errors). The size is the same as the production build. Step 24
-  (bundle analysis) can alias `react-router` to `dist/production/` in `vite.config.ts` if it is worth it.
 - **No focus management on route change (16a):** after client-side navigation, focus stays on the clicked link and
   the document `<title>` does not change, so screen-reader users are not told that the page changed. Fix idea: per-page
   `<title>` (React 19 hoists it into `<head>`) and moving focus to the page `<h1>`. Not planned yet.
