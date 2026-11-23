@@ -73,8 +73,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 22b | `pr/22b-posts-optimistic-delete` | Delete own posts (admins: any) with `useOptimistic`: removed at once, back on error | – | S2, P1 | ✅ |
 | 22c | `pr/22c-admin-roles` | Admin page: users list (`GET /api/admin/users`) and role change (`PATCH .../role`, `CANNOT_CHANGE_OWN_ROLE`) | – | S2 | ✅ |
 | 23a | `pr/23a-xss-sanitize` | `/security` page, XSS demo: React escaping vs DOMPurify vs raw HTML (in a sandboxed iframe) | `lib/sanitize` | S1 | ✅ |
-| 23b | `pr/23b-dangerous-urls` | Dangerous URLs (`javascript:`, `data:`) in user links: `safeUrl()` allowlist (http, https, mailto) | `lib/sanitize` (extended) | S1 | 🔍 |
-| 23c | `pr/23c-csrf-rate-limit-demo` | CSRF demo (POST without / with a wrong token → `CSRF_INVALID`) and rate-limit demo (`/api/demo/rate-limit` → 429 + `Retry-After`) | – | S1, S3 | ⬜ |
+| 23b | `pr/23b-dangerous-urls` | Dangerous URLs (`javascript:`, `data:`) in user links: `safeUrl()` allowlist (http, https, mailto) | `lib/sanitize` (extended) | S1 | ✅ |
+| 23c | `pr/23c-csrf-rate-limit-demo` | CSRF demo (POST without / with a wrong token → `CSRF_INVALID`) and rate-limit demo (`/api/demo/rate-limit` → 429 + `Retry-After`) | – | S1, S3 | 🔍 |
 | 23d | `pr/23d-preview-csp` | CSP + security headers in `vite preview` (incl. sonner's injected `<style>`), shows CSP blocking the raw-HTML demo | – | S1 | ⬜ |
 | 24 | `pr/24-performance-demo` | `memo`/`useMemo`/`useCallback`, `useDeferredValue`, VirtualList, manualChunks, bundle analysis, dynamic import | `components/ui/VirtualList` | P1, P2 | ⬜ |
 | 25 | `pr/25-memory-leaks-demo` | Leaky vs fixed components (interval, listener, cache), `useEventListener`, `useInterval` | `hooks/useEventListener`, `hooks/useInterval` | P3 | ⬜ |
