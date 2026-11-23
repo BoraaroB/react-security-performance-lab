@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 22b (`pr/22b-posts-optimistic-delete`, PR #53).
-- **In review:** step 22c (`pr/22c-admin-roles`): admin page with the users table and role change (`features/admin/`).
-- **Next:** step 23 (`pr/23-security-demo`): XSS (React escaping vs DOMPurify), dangerous URLs, CSRF, rate limit, CSP in `vite preview`, `lib/sanitize`. Probably split (23a, 23b, ...): ask the user.
+- **Last merged:** step 22c (`pr/22c-admin-roles`, PR #54).
+- **In review:** step 23a (`pr/23a-xss-sanitize`): `/security` page with the XSS demo, `lib/sanitize` (DOMPurify).
+- **Next:** step 23b (`pr/23b-dangerous-urls`): `safeUrl()` in `lib/sanitize` for user links (`javascript:`, `data:`), a new section on `/security`.
 
 ## How to resume after `/clear`
 
@@ -74,7 +74,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 21c | Route guards | ✅ PR #51 | `router/GuestRoute.tsx` (+ `getSafeRedirectPath`), `router/ProtectedRoute.tsx` (`?redirectTo=`), `router/RequireRole.tsx` (`allowedRoles`), pathless groups in `routes.tsx`; lazy `DashboardPage` + `AdminPage` (placeholders for step 22), Dashboard/Admin nav links; forms lose `disabled={isRestoring}` and register's `reset()`; ~185 inserted / ~18 deleted code lines (over budget, accepted with the 3-PR split) |
 | 22a | Posts list + create | ✅ PR #52 | `features/posts/` (`posts.api.ts` = `Post`, `POSTS_PATH`, `createPost`; `posts.schemas.ts` mirrors the server; `NewPostForm.tsx`; `PostFeed.tsx` holds the list in state), `DashboardPage` = `useFetch(authHttp, POSTS_PATH)` + `ErrorState`; ~165 inserted / ~8 deleted code lines (over budget, flagged to the user) |
 | 22b | Optimistic delete | ✅ PR #53 | `deletePost(id)` in `posts.api.ts` (`encodeURIComponent`), `PostFeed`: `useOptimistic(posts, filter)` + `startTransition(async ...)`, "Delete" only for the author or an admin (UX), 404 = already deleted, 403 own toast; ~80 inserted / ~17 deleted code lines |
-| 22c | Admin roles | 🔍 `pr/22c-admin-roles` | `features/admin/` (`admin.api.ts` = `AdminUser`, `ADMIN_USERS_PATH`, `changeRole`; `UserTable.tsx`), `AdminPage` = `useFetch(authHttp, ADMIN_USERS_PATH)` + `ErrorState`; own row disabled; one save at a time; errors mapped by code; ~128 inserted / ~5 deleted code lines |
+| 22c | Admin roles | ✅ PR #54 | `features/admin/` (`admin.api.ts` = `AdminUser`, `ADMIN_USERS_PATH`, `changeRole`; `UserTable.tsx`), `AdminPage` = `useFetch(authHttp, ADMIN_USERS_PATH)` + `ErrorState`; own row disabled; one save at a time; errors mapped by code; ~128 inserted / ~5 deleted code lines |
+| 23a | XSS demo + `lib/sanitize` | 🔍 `pr/23a-xss-sanitize` | `lib/sanitize` (`sanitizeHtml`, DOMPurify 3, new dependency), `features/security-demo/XssDemo.tsx`, lazy `pages/SecurityPage.tsx` (public, nav link "Security"); DOMPurify only in the `SecurityPage` chunk; ~156 inserted / ~2 deleted code lines + README (slightly over budget after the review fixes) |
 
 ## Decisions (and why)
 
@@ -797,13 +798,25 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **Redaction:** by exact key name, top level and up to 3 levels deep (`DEFAULT_REDACT_KEYS` in `lib/logger/core.ts`).
   Headers are not logged at all, but `authorization`/`cookie`/`set-cookie` are still redacted as a safety net.
 
+- **Step 23 split (user's choice, 2026-11-23):** four PRs: 23a XSS + `lib/sanitize`, 23b dangerous URLs (`safeUrl`),
+  23c CSRF + rate-limit demos, 23d CSP in `vite preview`. The plan table has the four rows.
+- **`sanitizeHtml` design (23a):** DOMPurify with the HTML profile only (no SVG/MathML), `<style>`, `style=""` and
+  `class` / `data-*` (they can reuse the app's own CSS, e.g. Tailwind `fixed inset-0` or sonner's
+  `[data-sonner-toaster]`, for a fake overlay) and form controls (`form`, `input`, `button`, `select`, `textarea`:
+  phishing) always removed; `id` kept (DOMPurify blocks clobbering ids). Callers can only add to the forbidden lists,
+  never remove the defaults. It throws when `DOMPurify.isSupported` is false (no DOM), because DOMPurify then returns the input
+  unchanged (fails open). No DOMPurify hooks (they are global state on the shared instance). The demo's raw-HTML
+  output runs in `<iframe sandbox="allow-scripts allow-modals" srcDoc>`: scripts run in an opaque origin, so the
+  payload shows an alert but cannot read the app (checked: `parent` and `document.cookie` throw `SecurityError`).
+  An `srcdoc` iframe inherits the page's CSP, so 23d can show the CSP blocking it.
+
 ## Local state that is not in git
 
 - `backend-express/.env` exists locally (git-ignored). It needs `DATA_ENCRYPTION_KEY` (07a), `JWT_SECRET` (08) and `CSRF_SECRET` (11):
   run `node scripts/setup-env.mjs` (it fills empty secrets and keeps everything else).
   For GitHub login (13b+), the user adds `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET` from their own GitHub OAuth App.
 - `frontend/` needs no `.env` in dev (`VITE_API_ORIGIN` defaults to `http://localhost:4000`). A production build
-  (`npm run build` → `vite preview`, step 23) needs `VITE_API_ORIGIN=http://localhost:4000` set, or `config/http.ts` throws. `backend-nest/` and the root `package.json` do not exist on purpose
+  (`npm run build` → `vite preview`, step 23d) needs `VITE_API_ORIGIN=http://localhost:4000` set, or `config/http.ts` throws. `backend-nest/` and the root `package.json` do not exist on purpose
   (Nest in step 26, root scripts in step 30).
 
 - **Step 21 design and split (user's choice, 2026-11-19):** generic interceptors (the industry pattern: axios
@@ -898,6 +911,10 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   every action gets 403, so it is UX only (checked in headless Chromium).
 
 ## Known gaps (fixed in later steps)
+
+- **Tracking pixels in sanitized HTML (23a security review, low → 23d):** `sanitizeHtml` keeps `<img src>` to any
+  host, so content can log each viewer's IP and the page URL. Callers can pass `forbidTags: ['img']`; the CSP
+  `img-src` in step 23d is the real fix. No app content uses `sanitizeHtml` yet (only the `/security` demo).
 
 - **Failed delete comes back late during another delete (22b code review, low):** React 19 drops optimistic values
   only when all pending async transitions have settled. If delete A is slow and delete B fails fast, B's error toast
@@ -1035,9 +1052,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `onCaughtError` stays the one place to log (17b code review corrected the first version of this note). Harmless
   today (console only); an error-tracking service should report from `onCaughtError` only. Not verified in the
   browser for a route error (only the `/components` widget was clicked).
-- **Sonner injects a `<style>` tag (chore/sonner-toasts → steps 23 and 32):** on import, sonner adds its CSS with
+- **Sonner injects a `<style>` tag (chore/sonner-toasts → steps 23d and 32):** on import, sonner adds its CSS with
   `document.createElement('style')`. A strict CSP (`style-src 'self'`) blocks it and the toasts lose their layout.
-  The CSP in step 23 (`vite preview`) and step 32 (nginx) must handle it, three options: (1) a `sha256-…`
+  The CSP in step 23d (`vite preview`) and step 32 (nginx) must handle it, three options: (1) a `sha256-…`
   hash of that CSS in `style-src` (static, but changes with each sonner version); (2) `'unsafe-inline'` for styles
   only (CSS injection is much weaker than script injection); (3) keep `style-src 'self'` and
   `import 'sonner/dist/styles.css'` (exported by the package) so Vite bundles the CSS; the blocked injection then only
