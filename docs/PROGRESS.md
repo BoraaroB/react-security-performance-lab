@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 22c (`pr/22c-admin-roles`, PR #54).
-- **In review:** step 23a (`pr/23a-xss-sanitize`): `/security` page with the XSS demo, `lib/sanitize` (DOMPurify).
-- **Next:** step 23b (`pr/23b-dangerous-urls`): `safeUrl()` in `lib/sanitize` for user links (`javascript:`, `data:`), a new section on `/security`.
+- **Last merged:** step 23a (`pr/23a-xss-sanitize`, PR #55).
+- **In review:** step 23b (`pr/23b-dangerous-urls`): `safeUrl()` in `lib/sanitize` (allowlist http, https, mailto), a "Dangerous URLs" section on `/security`.
+- **Next:** step 23c (`pr/23c-csrf-rate-limit-demo`): CSRF demo (`CSRF_INVALID`) and rate-limit demo (429 + `Retry-After`) on `/security`.
 
 ## How to resume after `/clear`
 
@@ -75,7 +75,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 22a | Posts list + create | ✅ PR #52 | `features/posts/` (`posts.api.ts` = `Post`, `POSTS_PATH`, `createPost`; `posts.schemas.ts` mirrors the server; `NewPostForm.tsx`; `PostFeed.tsx` holds the list in state), `DashboardPage` = `useFetch(authHttp, POSTS_PATH)` + `ErrorState`; ~165 inserted / ~8 deleted code lines (over budget, flagged to the user) |
 | 22b | Optimistic delete | ✅ PR #53 | `deletePost(id)` in `posts.api.ts` (`encodeURIComponent`), `PostFeed`: `useOptimistic(posts, filter)` + `startTransition(async ...)`, "Delete" only for the author or an admin (UX), 404 = already deleted, 403 own toast; ~80 inserted / ~17 deleted code lines |
 | 22c | Admin roles | ✅ PR #54 | `features/admin/` (`admin.api.ts` = `AdminUser`, `ADMIN_USERS_PATH`, `changeRole`; `UserTable.tsx`), `AdminPage` = `useFetch(authHttp, ADMIN_USERS_PATH)` + `ErrorState`; own row disabled; one save at a time; errors mapped by code; ~128 inserted / ~5 deleted code lines |
-| 23a | XSS demo + `lib/sanitize` | 🔍 `pr/23a-xss-sanitize` | `lib/sanitize` (`sanitizeHtml`, DOMPurify 3, new dependency), `features/security-demo/XssDemo.tsx`, lazy `pages/SecurityPage.tsx` (public, nav link "Security"); DOMPurify only in the `SecurityPage` chunk; ~156 inserted / ~2 deleted code lines + README (slightly over budget after the review fixes) |
+| 23a | XSS demo + `lib/sanitize` | ✅ PR #55 | `lib/sanitize` (`sanitizeHtml`, DOMPurify 3, new dependency), `features/security-demo/XssDemo.tsx`, lazy `pages/SecurityPage.tsx` (public, nav link "Security"); DOMPurify only in the `SecurityPage` chunk; ~156 inserted / ~2 deleted code lines + README (slightly over budget after the review fixes) |
+| 23b | Dangerous URLs (`safeUrl`) | 🔍 `pr/23b-dangerous-urls` | `lib/sanitize/url.ts` (`safeUrl`, re-exported from the index; no DOMPurify), `features/security-demo/UrlDemo.tsx` (sample URLs, result, rendered link), second section on `SecurityPage`; ~100 code lines + README |
 
 ## Decisions (and why)
 
@@ -809,6 +810,21 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   output runs in `<iframe sandbox="allow-scripts allow-modals" srcDoc>`: scripts run in an opaque origin, so the
   payload shows an alert but cannot read the app (checked: `parent` and `document.cookie` throw `SecurityError`).
   An `srcdoc` iframe inherits the page's CSP, so 23d can show the CSP blocking it.
+
+- **`safeUrl` design (23b):** `new URL(url)` with NO base, so only absolute URLs pass (`www.example.com`, `/admin`,
+  `//evil.example` → `undefined`; app paths come from the router, never from user input). Allowlist
+  `['http:', 'https:', 'mailto:']` checked against `parsed.protocol` (the WHATWG parser already lowercases it and
+  strips leading spaces/control characters and tabs/newlines, checked in Node and headless Chrome: `"  JaVaScRiPt:"`,
+  `"java\tscript:"`, `"\u0000javascript:"` all become `javascript:`). URLs with a user name or password
+  (`https://example.com@evil.example`, looks like example.com) are rejected (security review). Returns `parsed.href` (what was checked is what
+  the browser gets), or `undefined` (`<a href={undefined}>` is not a link). `allowedProtocols` REPLACES the defaults
+  (so `['https:']` can be stricter); there is no hard blocklist on top, the README warns against `javascript:`/`data:`.
+  `try { new URL } catch` instead of `URL.parse` (Safari 18+ / Chrome 126+ only, Vite does not polyfill it).
+  In its own `url.ts` so a bundle can import it without DOMPurify. React 19.3 itself replaces a `javascript:` href
+  with `javascript:throw new Error(...)` (checked in `react-dom`), but not `data:` or other schemes, and not
+  `window.location` / `window.open`; the demo says so. `data:` is blocked for phishing, not as XSS (modern browsers
+  isolate it; code review). `safeUrl` checks the scheme, NOT the host: it is not an open-redirect check (use a
+  same-origin check like `getSafeRedirectPath`); `window.open` needs `'noopener,noreferrer'`. Both are in the README.
 
 ## Local state that is not in git
 
