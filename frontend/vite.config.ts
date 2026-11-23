@@ -18,6 +18,14 @@ const SONNER_STYLE_HASH = "'sha256-StEaX+se6YS7pqjzrzMIA0KaX9zF/8zAhvQXZAe5epY='
 // '' every page load logs a violation. An empty style does nothing, and once text is added it is checked again.
 const EMPTY_STYLE_HASH = "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='";
 
+// Libraries every page loads. They change only when we update them, so in their own chunk the browser keeps them
+// cached across deploys. Lazy-only libraries (zod, react-hook-form, dompurify) stay out: here they would load on
+// the first page. Rollup also moves what these import (scheduler, cookie, ...) into the vendor chunk.
+const VENDOR_PACKAGES = ['react', 'react-dom', 'react-router', 'sonner', 'clsx', 'tailwind-merge'];
+// The package folder after the LAST node_modules/ (pnpm and nested copies have two): 'react-dom' in
+// '.../node_modules/react-dom/cjs/x.js' (or '@scope/name').
+const PACKAGE_NAME_IN_PATH = /.*node_modules\/((?:@[^/]+\/)?[^/]+)\//;
+
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, import.meta.dirname, 'VITE_');
   // Only the parsed origin goes into the header: a stray ';' in the env value cannot add its own CSP directive.
@@ -70,6 +78,22 @@ export default defineConfig(({ command, mode }) => {
     plugins,
     resolve: {
       alias: aliases,
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          // Without this, the libraries share the entry chunk with our code: every deploy changes its hash and
+          // users download ~375 kB of unchanged library code again.
+          manualChunks(moduleId) {
+            const match = PACKAGE_NAME_IN_PATH.exec(moduleId);
+            if (match && VENDOR_PACKAGES.includes(match[1])) {
+              return 'vendor';
+            }
+            // undefined: Rollup places the module as usual (entry, a lazy page chunk, or a shared chunk).
+            return undefined;
+          },
+        },
+      },
     },
     server: {
       port: 5173,

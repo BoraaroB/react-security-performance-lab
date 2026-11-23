@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 24c (`pr/24c-virtual-list`, PR #61).
-- **In review:** step 24d (`pr/24d-bundle-analysis`): `npm run analyze` (`rollup-plugin-visualizer` → `frontend/stats.html`) + `react-router` production build in `vite build`.
-- **Next:** step 24e (`pr/24e-manual-chunks`): `manualChunks` vendor chunk.
+- **Last merged:** step 24d (`pr/24d-bundle-analysis`, PR #62).
+- **In review:** step 24e (`pr/24e-manual-chunks`): `manualChunks` → `vendor-<hash>.js` (react, react-dom, react-router, sonner, clsx, tailwind-merge + what they import).
+- **Next:** step 24f (`pr/24f-dynamic-import`): dynamic `import()` on click.
 
 ## How to resume after `/clear`
 
@@ -82,7 +82,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 24a | memo demo + `/performance` | ✅ PR #59 | `features/performance-demo/` (`ProductList.tsx` + `MemoProductList = memo(...)`, render counter = effect without deps writing to a DOM ref; `MemoDemo.tsx`: 5,000 products, three lists), lazy `pages/PerformancePage.tsx`, `PATHS.performance`, nav link "Performance"; ~140 code lines |
 | 24b | useDeferredValue demo | ✅ PR #60 | `features/performance-demo/SlowList.tsx` (memo list of 250 rows, ~1 ms pure CPU work each = small units React can pause between, result in `data-checksum`), `DeferredDemo.tsx` (checkbox: list gets `deferredQuery` or `query`, dimmed while stale), second card on `PerformancePage`; ~87 code lines |
 | 24c | VirtualList | ✅ PR #61 | `components/ui/VirtualList/` (`core.ts` = `getVisibleRange()`, `VirtualList.tsx`: fixed row height, state = first visible row, absolute rows in a full-height inner box, `aria-posinset`/`aria-setsize`, focusable `role="group"` box with the label, first row clamped when items shrink), exported from `components/ui`; `features/performance-demo/VirtualListDemo.tsx` (10,000 rows, checkbox plain vs virtual), third card on `PerformancePage`; hand-written, no library; ~165 code lines + README |
-| 24d | Bundle analysis + react-router prod build | 🔍 `pr/24d-bundle-analysis` | `rollup-plugin-visualizer` 7.1.3 (dev dependency), `npm run analyze` = `vite build --mode analyze` → `frontend/stats.html` (treemap, gzip sizes, opens the browser; outside `dist/`, git-ignored); `vite.config.ts`: exact-match aliases `react-router` / `react-router/dom` → `dist/production/` only when `command === 'build'`; main chunk 395.09 → 393.38 kB (gzip 125.21 → 124.61 kB); ~35 code lines |
+| 24d | Bundle analysis + react-router prod build | ✅ PR #62 | `rollup-plugin-visualizer` 7.1.3 (dev dependency), `npm run analyze` = `vite build --mode analyze` → `frontend/stats.html` (treemap, gzip sizes, opens the browser; outside `dist/`, git-ignored); `vite.config.ts`: exact-match aliases `react-router` / `react-router/dom` → `dist/production/` only when `command === 'build'`; main chunk 395.09 → 393.38 kB (gzip 125.21 → 124.61 kB); ~35 code lines |
+| 24e | Vendor chunk | 🔍 `pr/24e-manual-chunks` | `vite.config.ts`: `VENDOR_PACKAGES` + `build.rollupOptions.output.manualChunks` (by the package folder after the last `node_modules/`); entry 393.38 → 16.44 kB, `vendor` 377.01 kB (gzip 118.33), preloaded; lazy zod/react-hook-form/dompurify chunks unchanged; ~23 code lines |
 
 ## Decisions (and why)
 
@@ -901,6 +902,17 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   Exact-match regexes, because a string alias `'react-router'` also matches `'react-router/dom'`. After a
   react-router update, check that `dist/production/index.mjs` and `dom-export.mjs` still exist (the build fails if
   not).
+- **Vendor chunk (24e):** an explicit list (`VENDOR_PACKAGES`), not "all of `node_modules`": the vendor chunk loads
+  on the first page, so a catch-all would make zod, react-hook-form and dompurify eager (measured: 528 kB, gzip
+  166.88 kB, +48.5 kB gzip on the first page, plus Vite's > 500 kB warning). The list = exactly the packages the entry
+  chunk held in 24d, so the first page loads the same bytes (124.61 → 124.73 kB gzip, two files, `modulepreload`).
+  Matched by the package folder after the LAST `node_modules/` (pnpm and nested copies have two; code review).
+  Rollup also moves every static dependency of a vendor module into `vendor` (scheduler, cookie,
+  set-cookie-parser, the CommonJS helper), so they are not listed; that is also why the vendor chunk imports
+  nothing. Risk: if a listed package ever imported a lazy-only library, that library would become eager (check
+  `npm run analyze`). Checked: two builds give the same names; a changed UI string or
+  `VITE_API_ORIGIN` changes the `index-*` names but not `vendor-*`; the vendor chunk imports nothing (no cycle).
+  Vite 8 (Rolldown) replaces `manualChunks` with chunk groups; revisit when upgrading.
 
 ## Local state that is not in git
 
@@ -1170,3 +1182,11 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 - **`ApiError.details` items are trusted by `lib/http` (18a code review; for forms handled in 20a):** the client only
   checks `Array.isArray`. `lib/forms` `applyServerErrors` checks each item (`{ field: string, message: string }`);
   any other code that reads `details` must check them too.
+- **Vendor list must be kept up to date (24e):** a new library that our code imports directly is NOT added to the
+  vendor chunk automatically; it lands in the entry chunk (works, only not cached across deploys). Check `npm run analyze` after
+  adding one. And chunks that import app code from the entry (e.g. the shared zod + react-hook-form chunk imports
+  three exports) get a new name on every deploy, because the entry's name is inside them. A separate `forms`
+  group would fix that; not planned.
+- **Long-term caching needs server headers (24e):** `vite preview` sends `Cache-Control: no-cache` (the browser
+  revalidates, 304). Production (step 32, nginx) should send `max-age=31536000, immutable` for `/assets/*` only,
+  never for `index.html`.
