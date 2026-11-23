@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 23d (`pr/23d-preview-csp`, PR #58).
-- **In review:** step 24a (`pr/24a-memo-demo`): lazy `/performance` page, `memo`/`useMemo`/`useCallback` demo with render counters.
-- **Next:** step 24b (`pr/24b-deferred-value`): `useDeferredValue` demo on `/performance`.
+- **Last merged:** step 24a (`pr/24a-memo-demo`, PR #59).
+- **In review:** step 24b (`pr/24b-deferred-value`): `useDeferredValue` demo (deliberately slow memo'd list) on `/performance`.
+- **Next:** step 24c (`pr/24c-virtual-list`): portable `components/ui/VirtualList` (renders only the visible rows of 10,000).
 
 ## How to resume after `/clear`
 
@@ -79,7 +79,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 23b | Dangerous URLs (`safeUrl`) | ✅ PR #56 | `lib/sanitize/url.ts` (`safeUrl`, re-exported from the index; no DOMPurify), `features/security-demo/UrlDemo.tsx` (sample URLs, result, rendered link), second section on `SecurityPage`; ~100 code lines + README |
 | 23c | CSRF + rate-limit demos | ✅ PR #57 | `features/security-demo/CsrfDemo.tsx` (POST `/api/demo/validation` with no / made-up / real token; own `httpWithoutCsrf` client without interceptors), `RateLimitDemo.tsx` (`GET /api/demo/rate-limit`, `retries: 0`), two sections on `SecurityPage`; frontend only; ~150 code lines |
 | 23d | CSP in `vite preview` | ✅ PR #58 | `vite.config.ts` = function of `mode` (`loadEnv` for `connect-src`), `preview.headers`: CSP (`script-src 'self'`, `style-src 'self'` + sonner hash + empty-string hash, `img-src 'self'`, `connect-src` API, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`), nosniff, Referrer-Policy, X-Frame-Options, COOP; `config/zod.ts` (`jitless`) imported first by both schema modules; sonner pinned to `2.0.8`; XssDemo text; ~85 code lines |
-| 24a | memo demo + `/performance` | 🔍 `pr/24a-memo-demo` | `features/performance-demo/` (`ProductList.tsx` + `MemoProductList = memo(...)`, render counter = effect without deps writing to a DOM ref; `MemoDemo.tsx`: 5,000 products, three lists), lazy `pages/PerformancePage.tsx`, `PATHS.performance`, nav link "Performance"; ~140 code lines |
+| 24a | memo demo + `/performance` | ✅ PR #59 | `features/performance-demo/` (`ProductList.tsx` + `MemoProductList = memo(...)`, render counter = effect without deps writing to a DOM ref; `MemoDemo.tsx`: 5,000 products, three lists), lazy `pages/PerformancePage.tsx`, `PATHS.performance`, nav link "Performance"; ~140 code lines |
+| 24b | useDeferredValue demo | 🔍 `pr/24b-deferred-value` | `features/performance-demo/SlowList.tsx` (memo list of 250 rows, ~1 ms pure CPU work each = small units React can pause between, result in `data-checksum`), `DeferredDemo.tsx` (checkbox: list gets `deferredQuery` or `query`, dimmed while stale), second card on `PerformancePage`; ~87 code lines |
 
 ## Decisions (and why)
 
@@ -862,6 +863,14 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   StrictMode mounts twice, so counters start at 2 (the UI text says so). React Compiler is NOT enabled on purpose:
   it would memoize automatically and hide the difference. Three lists: no memo / memo with new props / memo +
   `useMemo` + `useCallback`; only the third skips renders caused by unrelated parent state.
+- **useDeferredValue demo (24b):** the slow row does pure math (`Math.sqrt` loop, ~1 ms on an M-series Mac), not a
+  `performance.now()` busy wait: reading the clock in render fails `react-hooks/purity`. The result must be USED
+  (`data-checksum`): the production build dropped the side-effect-free call while its result was ignored (no lag in
+  `vite preview`, no `sqrt` in the chunk). `SlowList` must be `memo`, or it re-renders in the urgent render too.
+  Measured in headless Chrome: production 230–590 ms per key without, 11–16 ms with; dev ~1,150 vs 12–19 ms.
+  Headless-Chrome measuring tips: a production build needs `VITE_API_ORIGIN` (the app throws without it); with COOP
+  `same-origin`, `Page.navigate` from `about:blank` swaps the process and the CDP session loses the page, so start
+  Chrome directly on the URL.
 
 ## Local state that is not in git
 
