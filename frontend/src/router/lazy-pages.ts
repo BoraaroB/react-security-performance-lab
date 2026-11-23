@@ -4,6 +4,8 @@ import { lazyWithPreload } from '@/lib/lazy-with-preload';
 // Home and 404 are NOT here: the landing page and the fallback page belong in the first download.
 // Kept apart from routes.tsx so the layout can import them for preloading without a circular import.
 export const ComponentsPage = lazyWithPreload(() => import('@/pages/ComponentsPage'));
+// Lazy also keeps DOMPurify out of the first download: only this page uses it.
+export const SecurityPage = lazyWithPreload(() => import('@/pages/SecurityPage'));
 export const LoginPage = lazyWithPreload(() => import('@/pages/LoginPage'));
 export const RegisterPage = lazyWithPreload(() => import('@/pages/RegisterPage'));
 export const DashboardPage = lazyWithPreload(() => import('@/pages/DashboardPage'));
