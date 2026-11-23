@@ -75,8 +75,11 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 23a | `pr/23a-xss-sanitize` | `/security` page, XSS demo: React escaping vs DOMPurify vs raw HTML (in a sandboxed iframe) | `lib/sanitize` | S1 | ✅ |
 | 23b | `pr/23b-dangerous-urls` | Dangerous URLs (`javascript:`, `data:`) in user links: `safeUrl()` allowlist (http, https, mailto) | `lib/sanitize` (extended) | S1 | ✅ |
 | 23c | `pr/23c-csrf-rate-limit-demo` | CSRF demo (POST without / with a wrong token → `CSRF_INVALID`) and rate-limit demo (`/api/demo/rate-limit` → 429 + `Retry-After`) | – | S1, S3 | ✅ |
-| 23d | `pr/23d-preview-csp` | CSP + security headers in `vite preview` (incl. sonner's injected `<style>`), shows CSP blocking the raw-HTML demo | – | S1 | 🔍 |
-| 24 | `pr/24-performance-demo` | `memo`/`useMemo`/`useCallback`, `useDeferredValue`, VirtualList, manualChunks, bundle analysis, dynamic import | `components/ui/VirtualList` | P1, P2 | ⬜ |
+| 23d | `pr/23d-preview-csp` | CSP + security headers in `vite preview` (incl. sonner's injected `<style>`), shows CSP blocking the raw-HTML demo | – | S1 | ✅ |
+| 24a | `pr/24a-memo-demo` | `/performance` page (lazy), `memo`/`useMemo`/`useCallback` demo: three lists with render counters | – | P1 | 🔍 |
+| 24b | `pr/24b-deferred-value` | `useDeferredValue`: a slow list keeps the filter input responsive | – | P1 | ⬜ |
+| 24c | `pr/24c-virtual-list` | `VirtualList` (renders only the visible rows of 10,000) | `components/ui/VirtualList` | P1 | ⬜ |
+| 24d | `pr/24d-bundle-analysis` | Bundle analysis (`rollup-plugin-visualizer`, dev dependency), `manualChunks`, dynamic import on click; maybe the `react-router` production alias (known gap from 16a) | – | P2 | ⬜ |
 | 25 | `pr/25-memory-leaks-demo` | Leaky vs fixed components (interval, listener, cache), `useEventListener`, `useInterval` | `hooks/useEventListener`, `hooks/useInterval` | P3 | ⬜ |
 
 ## Phase C: NestJS backend (`backend-nest`)

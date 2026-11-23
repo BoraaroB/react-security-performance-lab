@@ -4,7 +4,15 @@ import { HomePage } from '@/pages/HomePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { RouteErrorPage } from '@/pages/RouteErrorPage';
 import { GuestRoute } from '@/router/GuestRoute';
-import { AdminPage, ComponentsPage, DashboardPage, LoginPage, RegisterPage, SecurityPage } from '@/router/lazy-pages';
+import {
+  AdminPage,
+  ComponentsPage,
+  DashboardPage,
+  LoginPage,
+  PerformancePage,
+  RegisterPage,
+  SecurityPage,
+} from '@/router/lazy-pages';
 import { PATHS } from '@/router/paths';
 import { ProtectedRoute } from '@/router/ProtectedRoute';
 import { RequireRole } from '@/router/RequireRole';
@@ -39,6 +47,10 @@ export const routes: RouteObject[] = [
           {
             path: PATHS.security,
             element: <SecurityPage />,
+          },
+          {
+            path: PATHS.performance,
+            element: <PerformancePage />,
           },
           // Only for visitors who are not logged in.
           {
