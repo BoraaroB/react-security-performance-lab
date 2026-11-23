@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 24a (`pr/24a-memo-demo`, PR #59).
-- **In review:** step 24b (`pr/24b-deferred-value`): `useDeferredValue` demo (deliberately slow memo'd list) on `/performance`.
-- **Next:** step 24c (`pr/24c-virtual-list`): portable `components/ui/VirtualList` (renders only the visible rows of 10,000).
+- **Last merged:** step 24b (`pr/24b-deferred-value`, PR #60).
+- **In review:** step 24c (`pr/24c-virtual-list`): portable `components/ui/VirtualList` + demo card on `/performance`.
+- **Next:** step 24d (`pr/24d-bundle-analysis`): bundle analysis (`rollup-plugin-visualizer`), `manualChunks`, dynamic import on click.
 
 ## How to resume after `/clear`
 
@@ -80,7 +80,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 23c | CSRF + rate-limit demos | ✅ PR #57 | `features/security-demo/CsrfDemo.tsx` (POST `/api/demo/validation` with no / made-up / real token; own `httpWithoutCsrf` client without interceptors), `RateLimitDemo.tsx` (`GET /api/demo/rate-limit`, `retries: 0`), two sections on `SecurityPage`; frontend only; ~150 code lines |
 | 23d | CSP in `vite preview` | ✅ PR #58 | `vite.config.ts` = function of `mode` (`loadEnv` for `connect-src`), `preview.headers`: CSP (`script-src 'self'`, `style-src 'self'` + sonner hash + empty-string hash, `img-src 'self'`, `connect-src` API, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`), nosniff, Referrer-Policy, X-Frame-Options, COOP; `config/zod.ts` (`jitless`) imported first by both schema modules; sonner pinned to `2.0.8`; XssDemo text; ~85 code lines |
 | 24a | memo demo + `/performance` | ✅ PR #59 | `features/performance-demo/` (`ProductList.tsx` + `MemoProductList = memo(...)`, render counter = effect without deps writing to a DOM ref; `MemoDemo.tsx`: 5,000 products, three lists), lazy `pages/PerformancePage.tsx`, `PATHS.performance`, nav link "Performance"; ~140 code lines |
-| 24b | useDeferredValue demo | 🔍 `pr/24b-deferred-value` | `features/performance-demo/SlowList.tsx` (memo list of 250 rows, ~1 ms pure CPU work each = small units React can pause between, result in `data-checksum`), `DeferredDemo.tsx` (checkbox: list gets `deferredQuery` or `query`, dimmed while stale), second card on `PerformancePage`; ~87 code lines |
+| 24b | useDeferredValue demo | ✅ PR #60 | `features/performance-demo/SlowList.tsx` (memo list of 250 rows, ~1 ms pure CPU work each = small units React can pause between, result in `data-checksum`), `DeferredDemo.tsx` (checkbox: list gets `deferredQuery` or `query`, dimmed while stale), second card on `PerformancePage`; ~87 code lines |
+| 24c | VirtualList | 🔍 `pr/24c-virtual-list` | `components/ui/VirtualList/` (`core.ts` = `getVisibleRange()`, `VirtualList.tsx`: fixed row height, state = first visible row, absolute rows in a full-height inner box, `aria-posinset`/`aria-setsize`, focusable `role="group"` box with the label, first row clamped when items shrink), exported from `components/ui`; `features/performance-demo/VirtualListDemo.tsx` (10,000 rows, checkbox plain vs virtual), third card on `PerformancePage`; hand-written, no library; ~165 code lines + README |
 
 ## Decisions (and why)
 
@@ -871,6 +872,15 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   Headless-Chrome measuring tips: a production build needs `VITE_API_ORIGIN` (the app throws without it); with COOP
   `same-origin`, `Page.navigate` from `about:blank` swaps the process and the CDP session loses the page, so start
   Chrome directly on the URL.
+- **VirtualList (24c):** hand-written on purpose (no `@tanstack/react-virtual` / `react-window`): the user must
+  follow the math. Limits: fixed row height and a fixed-height scroll box (variable heights or window scrolling →
+  use a library). State is the first visible ROW, not `scrollTop` in px, so scrolling inside one row sets the same
+  value and React skips the render. Rows are positioned with inline `style` (`top`, `height`): React sets them
+  through CSSOM, which `style-src 'self'` allows (checked in `vite preview`: no style violations). `getKey` is
+  required (index keys mix up rows when items change). Measured in headless Chrome (production): ~16–21 rows in the
+  DOM, 372 DOM elements on the page vs 10,339 with the plain list; switching to the plain list 46–61 ms (141–184 ms
+  at 4× CPU slowdown) vs 5–14 ms (21–22 ms) back to virtual. `vite preview` needs port 5173 free (strictPort); use
+  `rowHeight` must not change while mounted (remount with `key={rowHeight}`; code review). `--port 5180` when the dev server is running (the API calls then fail CORS, the performance page does not need them).
 
 ## Local state that is not in git
 

@@ -8,3 +8,4 @@ export { Input, type InputProps } from './Input';
 export { Select, type SelectProps } from './Select';
 export { Spinner, type SpinnerProps } from './Spinner';
 export { Textarea, type TextareaProps } from './Textarea';
+export { VirtualList, type VirtualListProps } from './VirtualList';
