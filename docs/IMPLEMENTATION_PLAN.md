@@ -80,8 +80,8 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 24b | `pr/24b-deferred-value` | `useDeferredValue`: a slow list keeps the filter input responsive | – | P1 | ✅ |
 | 24c | `pr/24c-virtual-list` | `VirtualList` (renders only the visible rows of 10,000) | `components/ui/VirtualList` | P1 | ✅ |
 | 24d | `pr/24d-bundle-analysis` | Bundle analysis (`rollup-plugin-visualizer`, dev dependency, `npm run analyze`) + `react-router` production build alias (known gap from 16a) | – | P2 | ✅ |
-| 24e | `pr/24e-manual-chunks` | `manualChunks`: a vendor chunk that stays cached between deploys | – | P2 | 🔍 |
-| 24f | `pr/24f-dynamic-import` | Dynamic `import()` on click: a library loads only when the user needs it | – | P2 | ⬜ |
+| 24e | `pr/24e-manual-chunks` | `manualChunks`: a vendor chunk that stays cached between deploys | – | P2 | ✅ |
+| 24f | `pr/24f-dynamic-import` | Dynamic `import()` on click: a library loads only when the user needs it | – | P2 | 🔍 |
 | 25 | `pr/25-memory-leaks-demo` | Leaky vs fixed components (interval, listener, cache), `useEventListener`, `useInterval` | `hooks/useEventListener`, `hooks/useInterval` | P3 | ⬜ |
 
 ## Phase C: NestJS backend (`backend-nest`)
