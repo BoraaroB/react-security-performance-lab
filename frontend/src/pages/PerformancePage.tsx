@@ -1,5 +1,6 @@
 import { DeferredDemo } from '@/features/performance-demo/DeferredDemo';
 import { MemoDemo } from '@/features/performance-demo/MemoDemo';
+import { VirtualListDemo } from '@/features/performance-demo/VirtualListDemo';
 
 // Public demos of React rendering performance: what re-renders, and how to skip renders that are not needed.
 export default function PerformancePage() {
@@ -8,6 +9,7 @@ export default function PerformancePage() {
       <h1 className="text-2xl font-semibold text-gray-900">Performance demos</h1>
       <MemoDemo />
       <DeferredDemo />
+      <VirtualListDemo />
     </div>
   );
 }

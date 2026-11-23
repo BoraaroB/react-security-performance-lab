@@ -3,6 +3,8 @@
 Small, styled building blocks (Button, Spinner, Badge, Card, Alert, and the form fields FormField, Input, Textarea,
 Select) with Tailwind defaults. Every component except FormField accepts the normal HTML props of its element, plus a
 `className` that really overrides the defaults (merged by `cn`). FormField takes only the props in the table below.
+`VirtualList` (a list that renders only the visible rows) is its own folder with its own props: see
+[VirtualList/README.md](VirtualList/README.md).
 
 ## Dependencies
 - npm: `react@^19`, `tailwindcss@^4`
