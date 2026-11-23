@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 23a (`pr/23a-xss-sanitize`, PR #55).
-- **In review:** step 23b (`pr/23b-dangerous-urls`): `safeUrl()` in `lib/sanitize` (allowlist http, https, mailto), a "Dangerous URLs" section on `/security`.
-- **Next:** step 23c (`pr/23c-csrf-rate-limit-demo`): CSRF demo (`CSRF_INVALID`) and rate-limit demo (429 + `Retry-After`) on `/security`.
+- **Last merged:** step 23b (`pr/23b-dangerous-urls`, PR #56).
+- **In review:** step 23c (`pr/23c-csrf-rate-limit-demo`): CSRF demo (no / made-up / real token) and rate-limit demo (429 + `Retry-After`) on `/security`.
+- **Next:** step 23d (`pr/23d-preview-csp`): CSP + security headers in `vite preview`, CSP blocking the raw-HTML demo.
 
 ## How to resume after `/clear`
 
@@ -76,7 +76,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 22b | Optimistic delete | ✅ PR #53 | `deletePost(id)` in `posts.api.ts` (`encodeURIComponent`), `PostFeed`: `useOptimistic(posts, filter)` + `startTransition(async ...)`, "Delete" only for the author or an admin (UX), 404 = already deleted, 403 own toast; ~80 inserted / ~17 deleted code lines |
 | 22c | Admin roles | ✅ PR #54 | `features/admin/` (`admin.api.ts` = `AdminUser`, `ADMIN_USERS_PATH`, `changeRole`; `UserTable.tsx`), `AdminPage` = `useFetch(authHttp, ADMIN_USERS_PATH)` + `ErrorState`; own row disabled; one save at a time; errors mapped by code; ~128 inserted / ~5 deleted code lines |
 | 23a | XSS demo + `lib/sanitize` | ✅ PR #55 | `lib/sanitize` (`sanitizeHtml`, DOMPurify 3, new dependency), `features/security-demo/XssDemo.tsx`, lazy `pages/SecurityPage.tsx` (public, nav link "Security"); DOMPurify only in the `SecurityPage` chunk; ~156 inserted / ~2 deleted code lines + README (slightly over budget after the review fixes) |
-| 23b | Dangerous URLs (`safeUrl`) | 🔍 `pr/23b-dangerous-urls` | `lib/sanitize/url.ts` (`safeUrl`, re-exported from the index; no DOMPurify), `features/security-demo/UrlDemo.tsx` (sample URLs, result, rendered link), second section on `SecurityPage`; ~100 code lines + README |
+| 23b | Dangerous URLs (`safeUrl`) | ✅ PR #56 | `lib/sanitize/url.ts` (`safeUrl`, re-exported from the index; no DOMPurify), `features/security-demo/UrlDemo.tsx` (sample URLs, result, rendered link), second section on `SecurityPage`; ~100 code lines + README |
+| 23c | CSRF + rate-limit demos | 🔍 `pr/23c-csrf-rate-limit-demo` | `features/security-demo/CsrfDemo.tsx` (POST `/api/demo/validation` with no / made-up / real token; own `httpWithoutCsrf` client without interceptors), `RateLimitDemo.tsx` (`GET /api/demo/rate-limit`, `retries: 0`), two sections on `SecurityPage`; frontend only; ~150 code lines |
 
 ## Decisions (and why)
 
@@ -825,6 +826,13 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `window.location` / `window.open`; the demo says so. `data:` is blocked for phishing, not as XSS (modern browsers
   isolate it; code review). `safeUrl` checks the scheme, NOT the host: it is not an open-redirect check (use a
   same-origin check like `getSafeRedirectPath`); `window.open` needs `'noopener,noreferrer'`. Both are in the README.
+- **CSRF + rate-limit demos (23c):** frontend only, the backend routes already existed. The CSRF demo POSTs to
+  `/api/demo/validation` (any write goes through `csrf.protect`; it only echoes the body, so nothing changes). The
+  failing cases need their own client (`credentials: 'include'`, NO interceptors): `authHttp` would add the real token
+  and retry after `CSRF_INVALID`, hiding the 403. The `Origin` check cannot be shown from the page (the browser sets
+  `Origin`), so the PR shows it with curl. The rate-limit demo uses `retries: 0`: the client would otherwise wait out a
+  `Retry-After` of ≤ 10 s and resend, hiding the 429. The browser sees two `RateLimit` headers (global + route).
+  With `ENABLE_DEMO_ROUTES` off, the "real token" case and the rate-limit demo get 404 (the demos are dev-only).
 
 ## Local state that is not in git
 
