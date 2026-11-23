@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 23c (`pr/23c-csrf-rate-limit-demo`, PR #57).
-- **In review:** step 23d (`pr/23d-preview-csp`): strict CSP + security headers in `vite preview` (sonner CSS allowed by hash), the XSS demo's raw HTML is blocked by the CSP.
-- **Next:** step 24 (`pr/24-performance-demo`): `memo`/`useMemo`/`useCallback`, `useDeferredValue`, VirtualList, manualChunks, bundle analysis (plan row; probably needs a split).
+- **Last merged:** step 23d (`pr/23d-preview-csp`, PR #58).
+- **In review:** step 24a (`pr/24a-memo-demo`): lazy `/performance` page, `memo`/`useMemo`/`useCallback` demo with render counters.
+- **Next:** step 24b (`pr/24b-deferred-value`): `useDeferredValue` demo on `/performance`.
 
 ## How to resume after `/clear`
 
@@ -78,7 +78,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 23a | XSS demo + `lib/sanitize` | ✅ PR #55 | `lib/sanitize` (`sanitizeHtml`, DOMPurify 3, new dependency), `features/security-demo/XssDemo.tsx`, lazy `pages/SecurityPage.tsx` (public, nav link "Security"); DOMPurify only in the `SecurityPage` chunk; ~156 inserted / ~2 deleted code lines + README (slightly over budget after the review fixes) |
 | 23b | Dangerous URLs (`safeUrl`) | ✅ PR #56 | `lib/sanitize/url.ts` (`safeUrl`, re-exported from the index; no DOMPurify), `features/security-demo/UrlDemo.tsx` (sample URLs, result, rendered link), second section on `SecurityPage`; ~100 code lines + README |
 | 23c | CSRF + rate-limit demos | ✅ PR #57 | `features/security-demo/CsrfDemo.tsx` (POST `/api/demo/validation` with no / made-up / real token; own `httpWithoutCsrf` client without interceptors), `RateLimitDemo.tsx` (`GET /api/demo/rate-limit`, `retries: 0`), two sections on `SecurityPage`; frontend only; ~150 code lines |
-| 23d | CSP in `vite preview` | 🔍 `pr/23d-preview-csp` | `vite.config.ts` = function of `mode` (`loadEnv` for `connect-src`), `preview.headers`: CSP (`script-src 'self'`, `style-src 'self'` + sonner hash + empty-string hash, `img-src 'self'`, `connect-src` API, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`), nosniff, Referrer-Policy, X-Frame-Options, COOP; `config/zod.ts` (`jitless`) imported first by both schema modules; sonner pinned to `2.0.8`; XssDemo text; ~85 code lines |
+| 23d | CSP in `vite preview` | ✅ PR #58 | `vite.config.ts` = function of `mode` (`loadEnv` for `connect-src`), `preview.headers`: CSP (`script-src 'self'`, `style-src 'self'` + sonner hash + empty-string hash, `img-src 'self'`, `connect-src` API, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`), nosniff, Referrer-Policy, X-Frame-Options, COOP; `config/zod.ts` (`jitless`) imported first by both schema modules; sonner pinned to `2.0.8`; XssDemo text; ~85 code lines |
+| 24a | memo demo + `/performance` | 🔍 `pr/24a-memo-demo` | `features/performance-demo/` (`ProductList.tsx` + `MemoProductList = memo(...)`, render counter = effect without deps writing to a DOM ref; `MemoDemo.tsx`: 5,000 products, three lists), lazy `pages/PerformancePage.tsx`, `PATHS.performance`, nav link "Performance"; ~140 code lines |
 
 ## Decisions (and why)
 
@@ -853,6 +854,14 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   back the console report (Zod falls back by itself). CSP checks in a browser need a `securitypolicyviolation`
   listener installed before app code (CDP `Page.addScriptToEvaluateOnNewDocument` with `source`): the `Log` domain
   does not show eval reports. Step 32 must copy the same policy.
+- **Step 24 split (user's choice):** 24a memo/useMemo/useCallback, 24b `useDeferredValue`, 24c `VirtualList`,
+  24d bundle analysis + `manualChunks` + dynamic import. The user approved `rollup-plugin-visualizer` (dev dependency)
+  for 24d.
+- **memo demo (24a):** the render counter is a `useEffect` WITHOUT a dependency array that writes `textContent` to a
+  ref'd `Badge`: it counts committed renders, and state would loop (each count would cause a render). In development
+  StrictMode mounts twice, so counters start at 2 (the UI text says so). React Compiler is NOT enabled on purpose:
+  it would memoize automatically and hide the difference. Three lists: no memo / memo with new props / memo +
+  `useMemo` + `useCallback`; only the third skips renders caused by unrelated parent state.
 
 ## Local state that is not in git
 

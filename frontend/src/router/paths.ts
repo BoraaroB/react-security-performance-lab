@@ -4,6 +4,7 @@ export const PATHS = {
   home: '/',
   components: '/components',
   security: '/security',
+  performance: '/performance',
   login: '/login',
   register: '/register',
   dashboard: '/dashboard',

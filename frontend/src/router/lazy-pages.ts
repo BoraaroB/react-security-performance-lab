@@ -6,6 +6,7 @@ import { lazyWithPreload } from '@/lib/lazy-with-preload';
 export const ComponentsPage = lazyWithPreload(() => import('@/pages/ComponentsPage'));
 // Lazy also keeps DOMPurify out of the first download: only this page uses it.
 export const SecurityPage = lazyWithPreload(() => import('@/pages/SecurityPage'));
+export const PerformancePage = lazyWithPreload(() => import('@/pages/PerformancePage'));
 export const LoginPage = lazyWithPreload(() => import('@/pages/LoginPage'));
 export const RegisterPage = lazyWithPreload(() => import('@/pages/RegisterPage'));
 export const DashboardPage = lazyWithPreload(() => import('@/pages/DashboardPage'));

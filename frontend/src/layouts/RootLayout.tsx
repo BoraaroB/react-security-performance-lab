@@ -5,7 +5,15 @@ import { Button, Spinner } from '@/components/ui';
 import { useAuth } from '@/features/auth/auth.context';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { cn } from '@/lib/cn';
-import { AdminPage, ComponentsPage, DashboardPage, LoginPage, RegisterPage, SecurityPage } from '@/router/lazy-pages';
+import {
+  AdminPage,
+  ComponentsPage,
+  DashboardPage,
+  LoginPage,
+  PerformancePage,
+  RegisterPage,
+  SecurityPage,
+} from '@/router/lazy-pages';
 import { PATHS } from '@/router/paths';
 
 type NavLinkItem = { to: string; label: string; preload?: () => void };
@@ -15,6 +23,7 @@ const NAV_LINKS: NavLinkItem[] = [
   { to: PATHS.home, label: 'Home' },
   { to: PATHS.components, label: 'Components', preload: ComponentsPage.preload },
   { to: PATHS.security, label: 'Security', preload: SecurityPage.preload },
+  { to: PATHS.performance, label: 'Performance', preload: PerformancePage.preload },
 ];
 
 // Only for visitors who are not logged in.
