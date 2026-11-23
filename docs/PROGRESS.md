@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 23b (`pr/23b-dangerous-urls`, PR #56).
-- **In review:** step 23c (`pr/23c-csrf-rate-limit-demo`): CSRF demo (no / made-up / real token) and rate-limit demo (429 + `Retry-After`) on `/security`.
-- **Next:** step 23d (`pr/23d-preview-csp`): CSP + security headers in `vite preview`, CSP blocking the raw-HTML demo.
+- **Last merged:** step 23c (`pr/23c-csrf-rate-limit-demo`, PR #57).
+- **In review:** step 23d (`pr/23d-preview-csp`): strict CSP + security headers in `vite preview` (sonner CSS allowed by hash), the XSS demo's raw HTML is blocked by the CSP.
+- **Next:** step 24 (`pr/24-performance-demo`): `memo`/`useMemo`/`useCallback`, `useDeferredValue`, VirtualList, manualChunks, bundle analysis (plan row; probably needs a split).
 
 ## How to resume after `/clear`
 
@@ -77,7 +77,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 22c | Admin roles | ✅ PR #54 | `features/admin/` (`admin.api.ts` = `AdminUser`, `ADMIN_USERS_PATH`, `changeRole`; `UserTable.tsx`), `AdminPage` = `useFetch(authHttp, ADMIN_USERS_PATH)` + `ErrorState`; own row disabled; one save at a time; errors mapped by code; ~128 inserted / ~5 deleted code lines |
 | 23a | XSS demo + `lib/sanitize` | ✅ PR #55 | `lib/sanitize` (`sanitizeHtml`, DOMPurify 3, new dependency), `features/security-demo/XssDemo.tsx`, lazy `pages/SecurityPage.tsx` (public, nav link "Security"); DOMPurify only in the `SecurityPage` chunk; ~156 inserted / ~2 deleted code lines + README (slightly over budget after the review fixes) |
 | 23b | Dangerous URLs (`safeUrl`) | ✅ PR #56 | `lib/sanitize/url.ts` (`safeUrl`, re-exported from the index; no DOMPurify), `features/security-demo/UrlDemo.tsx` (sample URLs, result, rendered link), second section on `SecurityPage`; ~100 code lines + README |
-| 23c | CSRF + rate-limit demos | 🔍 `pr/23c-csrf-rate-limit-demo` | `features/security-demo/CsrfDemo.tsx` (POST `/api/demo/validation` with no / made-up / real token; own `httpWithoutCsrf` client without interceptors), `RateLimitDemo.tsx` (`GET /api/demo/rate-limit`, `retries: 0`), two sections on `SecurityPage`; frontend only; ~150 code lines |
+| 23c | CSRF + rate-limit demos | ✅ PR #57 | `features/security-demo/CsrfDemo.tsx` (POST `/api/demo/validation` with no / made-up / real token; own `httpWithoutCsrf` client without interceptors), `RateLimitDemo.tsx` (`GET /api/demo/rate-limit`, `retries: 0`), two sections on `SecurityPage`; frontend only; ~150 code lines |
+| 23d | CSP in `vite preview` | 🔍 `pr/23d-preview-csp` | `vite.config.ts` = function of `mode` (`loadEnv` for `connect-src`), `preview.headers`: CSP (`script-src 'self'`, `style-src 'self'` + sonner hash + empty-string hash, `img-src 'self'`, `connect-src` API, `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`), nosniff, Referrer-Policy, X-Frame-Options, COOP; `config/zod.ts` (`jitless`) imported first by both schema modules; sonner pinned to `2.0.8`; XssDemo text; ~85 code lines |
 
 ## Decisions (and why)
 
@@ -833,6 +834,25 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `Origin`), so the PR shows it with curl. The rate-limit demo uses `retries: 0`: the client would otherwise wait out a
   `Retry-After` of ≤ 10 s and resend, hiding the 429. The browser sees two `RateLimit` headers (global + route).
   With `ENABLE_DEMO_ROUTES` off, the "real token" case and the rate-limit demo get 404 (the demos are dev-only).
+- **CSP in `vite preview` (23d):** headers only on `preview` (the dev server needs inline scripts/styles for HMR).
+  sonner's injected `<style>` is allowed by its SHA-256 hash (user's choice over `'unsafe-inline'` and bundling
+  `styles.css`; `styles.css` is NOT the same text as the injected string). sonner appends the tag empty and then adds
+  the text; Chrome checks both, so the hash of `''` (`47DEQ…`) is allowed too, or every load logs a violation.
+  sonner is pinned exactly (`"2.0.8"`, security review): any other version changes the CSS and breaks the hash; the
+  recompute command is in `docs/prs/23d-preview-csp.md` (never fall back to `'unsafe-inline'`). `connect-src` =
+  the origin of `VITE_API_ORIGIN` read with `loadEnv` at preview time (must equal the build-time value; an invalid
+  value fails with a clear error). `img-src 'self'` closes the tracking-pixel gap from 23a in `vite preview`
+  (production gets it in step 32). No HSTS (plain http on localhost; nginx over HTTPS in step 32). A `srcdoc` iframe
+  inherits the CSP, even sandboxed: checked in headless Chrome (no alert under the CSP, alert on the dev server).
+  `DOMPurify.sanitize` on the demo payload logs "inline event handler" violations (it parses the `onerror`
+  attribute; nothing runs).
+- **Zod `jitless` (23d, code review):** Zod 4 probes `new Function` when a `z.object()` is CREATED (module load), and
+  the CSP reports it even though Zod catches the error. `src/config/zod.ts` calls `config({ jitless: true })`; every
+  module that creates a schema imports `@/config/zod` FIRST (today `auth.schemas.ts`, `posts.schemas.ts`). Not in
+  `main.tsx`: that moved ~11 kB (3.8 kB gzip) of Zod into the entry chunk, measured. A forgotten import only brings
+  back the console report (Zod falls back by itself). CSP checks in a browser need a `securitypolicyviolation`
+  listener installed before app code (CDP `Page.addScriptToEvaluateOnNewDocument` with `source`): the `Log` domain
+  does not show eval reports. Step 32 must copy the same policy.
 
 ## Local state that is not in git
 
@@ -936,9 +956,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Known gaps (fixed in later steps)
 
-- **Tracking pixels in sanitized HTML (23a security review, low → 23d):** `sanitizeHtml` keeps `<img src>` to any
-  host, so content can log each viewer's IP and the page URL. Callers can pass `forbidTags: ['img']`; the CSP
-  `img-src` in step 23d is the real fix. No app content uses `sanitizeHtml` yet (only the `/security` demo).
+- **Tracking pixels in sanitized HTML (23a, partly fixed in 23d):** `img-src 'self'` blocks them under the preview
+  CSP; `npm run dev` has no CSP, and production needs the same policy in nginx (step 32).
 
 - **Failed delete comes back late during another delete (22b code review, low):** React 19 drops optimistic values
   only when all pending async transitions have settled. If delete A is slow and delete B fails fast, B's error toast
@@ -1076,14 +1095,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `onCaughtError` stays the one place to log (17b code review corrected the first version of this note). Harmless
   today (console only); an error-tracking service should report from `onCaughtError` only. Not verified in the
   browser for a route error (only the `/components` widget was clicked).
-- **Sonner injects a `<style>` tag (chore/sonner-toasts → steps 23d and 32):** on import, sonner adds its CSS with
-  `document.createElement('style')`. A strict CSP (`style-src 'self'`) blocks it and the toasts lose their layout.
-  The CSP in step 23d (`vite preview`) and step 32 (nginx) must handle it, three options: (1) a `sha256-…`
-  hash of that CSS in `style-src` (static, but changes with each sonner version); (2) `'unsafe-inline'` for styles
-  only (CSS injection is much weaker than script injection); (3) keep `style-src 'self'` and
-  `import 'sonner/dist/styles.css'` (exported by the package) so Vite bundles the CSS; the blocked injection then only
-  logs a CSP violation (check that the file has the same rules as the injected string; review). React's `style={...}` props are set through the CSSOM and are
-  not blocked by CSP.
+- **Sonner's injected `<style>` in nginx (23d → step 32):** solved for `vite preview` with two hashes (see Decisions,
+  23d). Step 32 must copy the same `style-src` hashes into nginx, and the hash must be recomputed after every sonner
+  update (sonner is pinned exactly for that reason).
 - **React Router ships its development build (16a code review → step 24):** `react-router` 7's `package.json`
   `exports` has no `production` condition; every condition points to `dist/development/`, so Vite bundles the dev
   build (dev warnings on, `console.error` on render errors). The size is the same as the production build. Step 24
