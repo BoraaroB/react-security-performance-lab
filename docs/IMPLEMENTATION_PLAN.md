@@ -81,8 +81,10 @@ P1 = React rendering, P2 = bundle size and loading, P3 = memory leaks, DX = deve
 | 24c | `pr/24c-virtual-list` | `VirtualList` (renders only the visible rows of 10,000) | `components/ui/VirtualList` | P1 | ✅ |
 | 24d | `pr/24d-bundle-analysis` | Bundle analysis (`rollup-plugin-visualizer`, dev dependency, `npm run analyze`) + `react-router` production build alias (known gap from 16a) | – | P2 | ✅ |
 | 24e | `pr/24e-manual-chunks` | `manualChunks`: a vendor chunk that stays cached between deploys | – | P2 | ✅ |
-| 24f | `pr/24f-dynamic-import` | Dynamic `import()` on click: a library loads only when the user needs it | – | P2 | 🔍 |
-| 25 | `pr/25-memory-leaks-demo` | Leaky vs fixed components (interval, listener, cache), `useEventListener`, `useInterval` | `hooks/useEventListener`, `hooks/useInterval` | P3 | ⬜ |
+| 24f | `pr/24f-dynamic-import` | Dynamic `import()` on click: a library loads only when the user needs it | – | P2 | ✅ |
+| 25a | `pr/25a-interval-leak` | Memory leaks: an interval without cleanup (leaky vs fixed timer, counters that keep growing after unmount), `useInterval` | `hooks/useInterval` | P3 | 🔍 |
+| 25b | `pr/25b-listener-leak` | A window event listener without cleanup (leaky vs fixed), `useEventListener` | `hooks/useEventListener` | P3 | ⬜ |
+| 25c | `pr/25c-cache-leak` | A module-level cache that grows forever vs a bounded cache; finding a leak with a DevTools heap snapshot | – | P3 | ⬜ |
 
 ## Phase C: NestJS backend (`backend-nest`)
 

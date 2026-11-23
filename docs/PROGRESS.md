@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 24e (`pr/24e-manual-chunks`, PR #63).
-- **In review:** step 24f (`pr/24f-dynamic-import`): `DynamicImportDemo` on `/performance` loads DOMPurify with `await import('@/lib/sanitize')` on click.
-- **Next:** step 25 (`pr/25-memory-leaks-demo`): leaky vs fixed components, `useEventListener`, `useInterval`.
+- **Last merged:** step 24f (`pr/24f-dynamic-import`, PR #64).
+- **In review:** step 25a (`pr/25a-interval-leak`): `hooks/useInterval` (`useEffectEvent` + cleanup) and `IntervalLeakDemo` on `/performance` (leaky vs fixed timer).
+- **Next:** step 25b (`pr/25b-listener-leak`): a window listener without cleanup, `hooks/useEventListener`.
 
 ## How to resume after `/clear`
 
@@ -84,7 +84,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 24c | VirtualList | ✅ PR #61 | `components/ui/VirtualList/` (`core.ts` = `getVisibleRange()`, `VirtualList.tsx`: fixed row height, state = first visible row, absolute rows in a full-height inner box, `aria-posinset`/`aria-setsize`, focusable `role="group"` box with the label, first row clamped when items shrink), exported from `components/ui`; `features/performance-demo/VirtualListDemo.tsx` (10,000 rows, checkbox plain vs virtual), third card on `PerformancePage`; hand-written, no library; ~165 code lines + README |
 | 24d | Bundle analysis + react-router prod build | ✅ PR #62 | `rollup-plugin-visualizer` 7.1.3 (dev dependency), `npm run analyze` = `vite build --mode analyze` → `frontend/stats.html` (treemap, gzip sizes, opens the browser; outside `dist/`, git-ignored); `vite.config.ts`: exact-match aliases `react-router` / `react-router/dom` → `dist/production/` only when `command === 'build'`; main chunk 395.09 → 393.38 kB (gzip 125.21 → 124.61 kB); ~35 code lines |
 | 24e | Vendor chunk | ✅ PR #63 | `vite.config.ts`: `VENDOR_PACKAGES` + `build.rollupOptions.output.manualChunks` (by the package folder after the last `node_modules/`); entry 393.38 → 16.44 kB, `vendor` 377.01 kB (gzip 118.33), preloaded; lazy zod/react-hook-form/dompurify chunks unchanged; ~23 code lines |
-| 24f | Dynamic `import()` on click | 🔍 `pr/24f-dynamic-import` | `features/performance-demo/DynamicImportDemo.tsx` (textarea + button; `await import('@/lib/sanitize')` in the handler, `import()` time shown, error `Alert` on a failed download), fourth card on `PerformancePage`; DOMPurify is now one shared chunk (30.67 kB, gzip 11.75) for `SecurityPage` (static) and `PerformancePage` (on click); ~63 code lines |
+| 24f | Dynamic `import()` on click | ✅ PR #64 | `features/performance-demo/DynamicImportDemo.tsx` (textarea + button; `await import('@/lib/sanitize')` in the handler, `import()` time shown, error `Alert` on a failed download), fourth card on `PerformancePage`; DOMPurify is now one shared chunk (30.67 kB, gzip 11.75) for `SecurityPage` (static) and `PerformancePage` (on click); ~63 code lines |
+| 25a | Interval leak + useInterval | 🔍 `pr/25a-interval-leak` | `hooks/useInterval` (`useInterval(callback, delayMs \| null)`; `useEffectEvent` for the newest callback, `clearInterval` on unmount; README shows the older ref pattern), `features/performance-demo/IntervalLeakDemo.tsx` (leaky timer without cleanup vs fixed timer; module counters show leaked intervals and ticks after unmount), fifth card on `PerformancePage`; ~100 code lines + README |
 
 ## Decisions (and why)
 
@@ -921,6 +922,14 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   shown as an `Alert` with "reload the page"; no retry button (whether a browser retries a failed module differs;
   Chrome retried in the offline test). Measured: page load requests no DOMPurify chunk; click 1 requests it (9.7 ms
   on localhost), click 2 none (0.9 ms). The shared chunk is named `index-<hash>.js` (after `lib/sanitize/index.ts`).
+- **Step 25 split (user's choice, 2026-11-23):** 25a = interval leak + `hooks/useInterval`, 25b = listener leak +
+  `hooks/useEventListener`, 25c = cache leak (unbounded vs bounded) + heap snapshot. One leak type per PR.
+- **useInterval (25a):** built on `useEffectEvent` (stable since React 19.2; we have 19.3), which is how the React docs
+  write it now: the interval restarts only when `delayMs` changes, and every tick calls the newest callback (no stale
+  closure). The classic ref pattern (Dan Abramov's "Making setInterval Declarative") is in the README for older React.
+  `delayMs: null` pauses. The demo counts ticks in module variables, so they survive the unmount; the card copies them
+  into state with `useInterval` once a second. Measured: production build = 1 leaked interval per mount; dev (StrictMode
+  mounts twice) = 2 per mount, which the card text explains. Reload the page to stop leaked intervals.
 
 ## Local state that is not in git
 
