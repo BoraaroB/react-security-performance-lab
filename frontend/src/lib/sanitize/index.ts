@@ -1,5 +1,6 @@
 // Cleans untrusted HTML before it goes into `dangerouslySetInnerHTML` (XSS protection).
 // Plain text never needs this: React escapes `{text}` on its own.
+// `safeUrl` (in url.ts) checks user URLs; it does not need DOMPurify.
 import DOMPurify from 'dompurify';
 
 export type SanitizeHtmlOptions = {
@@ -28,3 +29,5 @@ export function sanitizeHtml(dirty: string, options: SanitizeHtmlOptions = {}): 
     FORBID_ATTR: [...DEFAULT_FORBID_ATTRIBUTES, ...(options.forbidAttributes ?? [])],
   });
 }
+
+export { safeUrl, type SafeUrlOptions } from './url';
