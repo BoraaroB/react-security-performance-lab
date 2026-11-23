@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 24d (`pr/24d-bundle-analysis`, PR #62).
-- **In review:** step 24e (`pr/24e-manual-chunks`): `manualChunks` → `vendor-<hash>.js` (react, react-dom, react-router, sonner, clsx, tailwind-merge + what they import).
-- **Next:** step 24f (`pr/24f-dynamic-import`): dynamic `import()` on click.
+- **Last merged:** step 24e (`pr/24e-manual-chunks`, PR #63).
+- **In review:** step 24f (`pr/24f-dynamic-import`): `DynamicImportDemo` on `/performance` loads DOMPurify with `await import('@/lib/sanitize')` on click.
+- **Next:** step 25 (`pr/25-memory-leaks-demo`): leaky vs fixed components, `useEventListener`, `useInterval`.
 
 ## How to resume after `/clear`
 
@@ -83,7 +83,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 24b | useDeferredValue demo | ✅ PR #60 | `features/performance-demo/SlowList.tsx` (memo list of 250 rows, ~1 ms pure CPU work each = small units React can pause between, result in `data-checksum`), `DeferredDemo.tsx` (checkbox: list gets `deferredQuery` or `query`, dimmed while stale), second card on `PerformancePage`; ~87 code lines |
 | 24c | VirtualList | ✅ PR #61 | `components/ui/VirtualList/` (`core.ts` = `getVisibleRange()`, `VirtualList.tsx`: fixed row height, state = first visible row, absolute rows in a full-height inner box, `aria-posinset`/`aria-setsize`, focusable `role="group"` box with the label, first row clamped when items shrink), exported from `components/ui`; `features/performance-demo/VirtualListDemo.tsx` (10,000 rows, checkbox plain vs virtual), third card on `PerformancePage`; hand-written, no library; ~165 code lines + README |
 | 24d | Bundle analysis + react-router prod build | ✅ PR #62 | `rollup-plugin-visualizer` 7.1.3 (dev dependency), `npm run analyze` = `vite build --mode analyze` → `frontend/stats.html` (treemap, gzip sizes, opens the browser; outside `dist/`, git-ignored); `vite.config.ts`: exact-match aliases `react-router` / `react-router/dom` → `dist/production/` only when `command === 'build'`; main chunk 395.09 → 393.38 kB (gzip 125.21 → 124.61 kB); ~35 code lines |
-| 24e | Vendor chunk | 🔍 `pr/24e-manual-chunks` | `vite.config.ts`: `VENDOR_PACKAGES` + `build.rollupOptions.output.manualChunks` (by the package folder after the last `node_modules/`); entry 393.38 → 16.44 kB, `vendor` 377.01 kB (gzip 118.33), preloaded; lazy zod/react-hook-form/dompurify chunks unchanged; ~23 code lines |
+| 24e | Vendor chunk | ✅ PR #63 | `vite.config.ts`: `VENDOR_PACKAGES` + `build.rollupOptions.output.manualChunks` (by the package folder after the last `node_modules/`); entry 393.38 → 16.44 kB, `vendor` 377.01 kB (gzip 118.33), preloaded; lazy zod/react-hook-form/dompurify chunks unchanged; ~23 code lines |
+| 24f | Dynamic `import()` on click | 🔍 `pr/24f-dynamic-import` | `features/performance-demo/DynamicImportDemo.tsx` (textarea + button; `await import('@/lib/sanitize')` in the handler, `import()` time shown, error `Alert` on a failed download), fourth card on `PerformancePage`; DOMPurify is now one shared chunk (30.67 kB, gzip 11.75) for `SecurityPage` (static) and `PerformancePage` (on click); ~63 code lines |
 
 ## Decisions (and why)
 
@@ -913,6 +914,13 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `npm run analyze`). Checked: two builds give the same names; a changed UI string or
   `VITE_API_ORIGIN` changes the `index-*` names but not `vendor-*`; the vendor chunk imports nothing (no cycle).
   Vite 8 (Rolldown) replaces `manualChunks` with chunk groups; revisit when upgrading.
+- **Dynamic import demo (24f, user's choice):** DOMPurify via the existing `@/lib/sanitize`, no new dependency
+  (`marked` and `jszip` were the alternatives). Not on the Security page: `XssDemo` sanitizes on every keystroke,
+  so it needs DOMPurify at once. A plain `import()` in the handler, no own promise cache (the module map already
+  shares one download, see 16b). Errors are caught in the handler (an event handler error reaches no boundary) and
+  shown as an `Alert` with "reload the page"; no retry button (whether a browser retries a failed module differs;
+  Chrome retried in the offline test). Measured: page load requests no DOMPurify chunk; click 1 requests it (9.7 ms
+  on localhost), click 2 none (0.9 ms). The shared chunk is named `index-<hash>.js` (after `lib/sanitize/index.ts`).
 
 ## Local state that is not in git
 
