@@ -1,3 +1,5 @@
+// Before 'zod': turns off Zod's eval probe, which the CSP would report (see config/zod.ts).
+import '@/config/zod';
 import { z } from 'zod';
 
 // Mirrors the server's createPostSchema (backend-express/src/app/schemas/posts.schemas.ts), only for quick feedback:

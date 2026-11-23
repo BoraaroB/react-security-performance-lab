@@ -84,7 +84,10 @@ export function XssDemo() {
         <p className="text-sm text-gray-600">
           In a real page this code would run with full access to the app. Here it runs in a sandboxed iframe:
           a separate origin that cannot read this page, its cookies or the access token in memory. Unlike innerHTML,
-          the iframe parses a full document, so a {'<script>'} tag runs here too.
+          the iframe parses a full document, so a {'<script>'} tag runs here too. In the production build
+          (npm run build, then npm run preview) the Content Security Policy blocks it as well: the iframe
+          inherits this page's CSP, which allows no inline scripts, so no alert appears (the browser console
+          shows the violation).
         </p>
         <Button variant="danger" size="sm" onClick={renderUnsafe}>
           Render without sanitizing

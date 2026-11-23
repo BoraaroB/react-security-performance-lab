@@ -3,7 +3,7 @@ import { RateLimitDemo } from '@/features/security-demo/RateLimitDemo';
 import { UrlDemo } from '@/features/security-demo/UrlDemo';
 import { XssDemo } from '@/features/security-demo/XssDemo';
 
-// Public demos of the browser-side security topics. Step 23d adds the CSP.
+// Public demos of the browser-side security topics. The CSP that guards them in production is in vite.config.ts.
 export default function SecurityPage() {
   return (
     <div className="space-y-6">
