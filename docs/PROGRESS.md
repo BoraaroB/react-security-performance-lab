@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 24f (`pr/24f-dynamic-import`, PR #64).
-- **In review:** step 25a (`pr/25a-interval-leak`): `hooks/useInterval` (`useEffectEvent` + cleanup) and `IntervalLeakDemo` on `/performance` (leaky vs fixed timer).
-- **Next:** step 25b (`pr/25b-listener-leak`): a window listener without cleanup, `hooks/useEventListener`.
+- **Last merged:** step 25a (`pr/25a-interval-leak`, PR #65).
+- **In review:** step 25b (`pr/25b-listener-leak`): `hooks/useEventListener` (window listener, `useEffectEvent` + cleanup) and `ListenerLeakDemo` on `/performance` (leaky vs fixed `pointermove` tracker).
+- **Next:** step 25c (`pr/25c-cache-leak`): a module-level cache that grows forever vs a bounded cache, and a DevTools heap snapshot.
 
 ## How to resume after `/clear`
 
@@ -85,7 +85,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 24d | Bundle analysis + react-router prod build | ✅ PR #62 | `rollup-plugin-visualizer` 7.1.3 (dev dependency), `npm run analyze` = `vite build --mode analyze` → `frontend/stats.html` (treemap, gzip sizes, opens the browser; outside `dist/`, git-ignored); `vite.config.ts`: exact-match aliases `react-router` / `react-router/dom` → `dist/production/` only when `command === 'build'`; main chunk 395.09 → 393.38 kB (gzip 125.21 → 124.61 kB); ~35 code lines |
 | 24e | Vendor chunk | ✅ PR #63 | `vite.config.ts`: `VENDOR_PACKAGES` + `build.rollupOptions.output.manualChunks` (by the package folder after the last `node_modules/`); entry 393.38 → 16.44 kB, `vendor` 377.01 kB (gzip 118.33), preloaded; lazy zod/react-hook-form/dompurify chunks unchanged; ~23 code lines |
 | 24f | Dynamic `import()` on click | ✅ PR #64 | `features/performance-demo/DynamicImportDemo.tsx` (textarea + button; `await import('@/lib/sanitize')` in the handler, `import()` time shown, error `Alert` on a failed download), fourth card on `PerformancePage`; DOMPurify is now one shared chunk (30.67 kB, gzip 11.75) for `SecurityPage` (static) and `PerformancePage` (on click); ~63 code lines |
-| 25a | Interval leak + useInterval | 🔍 `pr/25a-interval-leak` | `hooks/useInterval` (`useInterval(callback, delayMs \| null)`; `useEffectEvent` for the newest callback, `clearInterval` on unmount; README shows the older ref pattern), `features/performance-demo/IntervalLeakDemo.tsx` (leaky timer without cleanup vs fixed timer; module counters show leaked intervals and ticks after unmount), fifth card on `PerformancePage`; ~100 code lines + README |
+| 25a | Interval leak + useInterval | ✅ PR #65 | `hooks/useInterval` (`useInterval(callback, delayMs \| null)`; `useEffectEvent` for the newest callback, `clearInterval` on unmount; README shows the older ref pattern), `features/performance-demo/IntervalLeakDemo.tsx` (leaky timer without cleanup vs fixed timer; module counters show leaked intervals and ticks after unmount), fifth card on `PerformancePage`; ~100 code lines + README |
+| 25b | Listener leak + useEventListener | 🔍 `pr/25b-listener-leak` | `hooks/useEventListener` (`useEventListener(type, handler, { capture, passive })`, window only, event typed from `WindowEventMap`; `useEffectEvent` for the newest handler, one `listener` function for add and remove), `features/performance-demo/ListenerLeakDemo.tsx` (leaky `pointermove` listener without cleanup vs fixed one; module counters show leaked listeners and calls after unmount), sixth card on `PerformancePage`; ~120 code lines + README |
 
 ## Decisions (and why)
 
@@ -930,6 +931,14 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   `delayMs: null` pauses. The demo counts ticks in module variables, so they survive the unmount; the card copies them
   into state with `useInterval` once a second. Measured: production build = 1 leaked interval per mount; dev (StrictMode
   mounts twice) = 2 per mount, which the card text explains. Reload the page to stop leaked intervals.
+- **useEventListener (25b):** `window` only, so the event type comes from `WindowEventMap` (`keydown` → `KeyboardEvent`)
+  without overloads for `document` and elements; for elements React renders, the JSX props (`onClick`, ...) already
+  add and remove listeners. Same `useEffectEvent` pattern as `useInterval`: the listener is re-added only when `type`,
+  `capture` or `passive` changes. One `listener` function is passed to add AND remove (remove needs the same reference
+  and the same `capture`). `passive` has no default (code review): an explicit `false` would turn off the browser's
+  passive default for `touchstart`/`touchmove`/`wheel` on window. Demo event: `pointermove` (easy to trigger, many events); both trackers use a functional
+  update, because several moves can arrive before React re-renders. Measured: production = 1 leaked listener per
+  mount, dev (StrictMode) = 2.
 
 ## Local state that is not in git
 
