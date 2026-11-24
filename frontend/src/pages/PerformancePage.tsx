@@ -1,6 +1,7 @@
 import { DeferredDemo } from '@/features/performance-demo/DeferredDemo';
 import { DynamicImportDemo } from '@/features/performance-demo/DynamicImportDemo';
 import { IntervalLeakDemo } from '@/features/performance-demo/IntervalLeakDemo';
+import { ListenerLeakDemo } from '@/features/performance-demo/ListenerLeakDemo';
 import { MemoDemo } from '@/features/performance-demo/MemoDemo';
 import { VirtualListDemo } from '@/features/performance-demo/VirtualListDemo';
 
@@ -15,6 +16,7 @@ export default function PerformancePage() {
       <VirtualListDemo />
       <DynamicImportDemo />
       <IntervalLeakDemo />
+      <ListenerLeakDemo />
     </div>
   );
 }
