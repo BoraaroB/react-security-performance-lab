@@ -5,8 +5,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 25b (`pr/25b-listener-leak`, PR #66).
-- **In review:** step 25c (`pr/25c-cache-leak`): `CacheLeakDemo` on `/performance` (module-level unbounded vs bounded cache of 1 MB `Report` objects, DevTools heap snapshot steps). Last step of phase B (frontend).
+- **Last merged:** step 25c (`pr/25c-cache-leak`, PR #67). Phase B (frontend) is done.
+- **In review:** `feat/responsive-layout` (side branch, user's request): "Menu" button below `md` in `RootLayout`, 16 px page padding on phones.
 - **Next:** step 26 (`pr/26-nest-skeleton`): phase C starts, Nest 11 + config + the same `lib/logger` + global exception filter + health.
 
 ## How to resume after `/clear`
@@ -87,7 +87,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 24f | Dynamic `import()` on click | ✅ PR #64 | `features/performance-demo/DynamicImportDemo.tsx` (textarea + button; `await import('@/lib/sanitize')` in the handler, `import()` time shown, error `Alert` on a failed download), fourth card on `PerformancePage`; DOMPurify is now one shared chunk (30.67 kB, gzip 11.75) for `SecurityPage` (static) and `PerformancePage` (on click); ~63 code lines |
 | 25a | Interval leak + useInterval | ✅ PR #65 | `hooks/useInterval` (`useInterval(callback, delayMs \| null)`; `useEffectEvent` for the newest callback, `clearInterval` on unmount; README shows the older ref pattern), `features/performance-demo/IntervalLeakDemo.tsx` (leaky timer without cleanup vs fixed timer; module counters show leaked intervals and ticks after unmount), fifth card on `PerformancePage`; ~100 code lines + README |
 | 25b | Listener leak + useEventListener | ✅ PR #66 | `hooks/useEventListener` (`useEventListener(type, handler, { capture, passive })`, window only, event typed from `WindowEventMap`; `useEffectEvent` for the newest handler, one `listener` function for add and remove), `features/performance-demo/ListenerLeakDemo.tsx` (leaky `pointermove` listener without cleanup vs fixed one; module counters show leaked listeners and calls after unmount), sixth card on `PerformancePage`; ~120 code lines + README |
-| 25c | Cache leak + heap snapshot | 🔍 `pr/25c-cache-leak` | `features/performance-demo/CacheLeakDemo.tsx` (`Report` class = 1 MiB `Float64Array`, module-level `unboundedCache` and `boundedCache` (limit 5, oldest removed first, Map insertion order), add-10 and clear buttons, heap snapshot steps on the card), seventh card on `PerformancePage`; no portable module; ~120 code lines |
+| 25c | Cache leak + heap snapshot | ✅ PR #67 | `features/performance-demo/CacheLeakDemo.tsx` (`Report` class = 1 MiB `Float64Array`, module-level `unboundedCache` and `boundedCache` (limit 5, oldest removed first, Map insertion order), add-10 and clear buttons, heap snapshot steps on the card), seventh card on `PerformancePage`; no portable module; ~120 code lines |
+| – | Responsive header | 🔍 `feat/responsive-layout` | `RootLayout`: "Menu" button below `md` (`aria-expanded`, `aria-controls`), one link list (column on phones, row from `md`), closes on link click and Escape (focus back to the button if it was in the menu, `useEventListener`), long names truncated (`min-w-0`), header `max-w-4xl`, `px-4 sm:px-8` padding (also the layout error page in `routes.tsx`); ~80 code lines |
 
 ## Decisions (and why)
 
@@ -694,6 +695,20 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   headless Chrome, not in Firefox/Safari). If the header grows (e.g. a
   user menu in step 21), check that 4rem is still more than its height. No ancestor of the header may get
   `overflow: hidden/auto`, or `sticky` stops working.
+- **Responsive header (`feat/responsive-layout`, user's request, 2026-11-25):** the pages were already fine on a
+  375 px screen (one column, `break-words`/`break-all`, `overflow-x-auto` table), so only the header and the page
+  padding changed. Below `md` (768 px) the links fold behind a "Menu" disclosure button (`aria-expanded`,
+  `aria-controls`). One link list styled by breakpoint (`hidden`/`flex` + `md:flex md:flex-row`), not two copies.
+  Closes on a link click (no effect watching the location: `react-hooks` 7 flags setState in effects) and on Escape,
+  which also moves focus to the button, but only if focus was inside the menu (the link is about to be hidden;
+  focus in a page form stays there, review). Not closed by the browser's Back
+  button or a redirect (accepted). The header container is `max-w-4xl` and `<main>` stays `max-w-2xl` (readable text
+  and forms): an admin's row needs ~650 px, `max-w-2xl` gives 608. Side effect: on wide screens the header's left
+  edge is not lined up with the content. The user's name is truncated (`max-w-48`, full name in `title`);
+  `min-w-0` on the name AND its box (a flex item never shrinks below its content by default; a 100-character
+  admin name overflowed at 768 px without it, review) and `shrink-0` on "Log out" (it wrapped into two lines). The closed
+  phone header is ~57 px, still under the 4rem `scroll-padding-top`; the OPEN menu is taller, which is fine because
+  focus is inside the menu then. Page padding `px-4 py-6 sm:p-8` (16 px gutter on phones).
 - **Step 18 split (user's choice, 2026-11-18):** 18a = `lib/http` core, 18b = retry + backoff, 18c = `hooks/useOnlineStatus` + offline banner.
 - **HTTP client (step 18a):** `lib/http` (no npm packages, no adapter: plain `fetch`). `createHttpClient({ apiOrigin, timeoutMs = 10_000, credentials = 'same-origin' })`
   → `{ request<T>(path, { method?, body?, signal?, timeoutMs? }) }`. `apiOrigin` must be an exact origin (checked at creation);
