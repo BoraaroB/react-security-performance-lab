@@ -5,9 +5,9 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 
 ## Current state
 
-- **Last merged:** step 25a (`pr/25a-interval-leak`, PR #65).
-- **In review:** step 25b (`pr/25b-listener-leak`): `hooks/useEventListener` (window listener, `useEffectEvent` + cleanup) and `ListenerLeakDemo` on `/performance` (leaky vs fixed `pointermove` tracker).
-- **Next:** step 25c (`pr/25c-cache-leak`): a module-level cache that grows forever vs a bounded cache, and a DevTools heap snapshot.
+- **Last merged:** step 25b (`pr/25b-listener-leak`, PR #66).
+- **In review:** step 25c (`pr/25c-cache-leak`): `CacheLeakDemo` on `/performance` (module-level unbounded vs bounded cache of 1 MB `Report` objects, DevTools heap snapshot steps). Last step of phase B (frontend).
+- **Next:** step 26 (`pr/26-nest-skeleton`): phase C starts, Nest 11 + config + the same `lib/logger` + global exception filter + health.
 
 ## How to resume after `/clear`
 
@@ -86,7 +86,8 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
 | 24e | Vendor chunk | ✅ PR #63 | `vite.config.ts`: `VENDOR_PACKAGES` + `build.rollupOptions.output.manualChunks` (by the package folder after the last `node_modules/`); entry 393.38 → 16.44 kB, `vendor` 377.01 kB (gzip 118.33), preloaded; lazy zod/react-hook-form/dompurify chunks unchanged; ~23 code lines |
 | 24f | Dynamic `import()` on click | ✅ PR #64 | `features/performance-demo/DynamicImportDemo.tsx` (textarea + button; `await import('@/lib/sanitize')` in the handler, `import()` time shown, error `Alert` on a failed download), fourth card on `PerformancePage`; DOMPurify is now one shared chunk (30.67 kB, gzip 11.75) for `SecurityPage` (static) and `PerformancePage` (on click); ~63 code lines |
 | 25a | Interval leak + useInterval | ✅ PR #65 | `hooks/useInterval` (`useInterval(callback, delayMs \| null)`; `useEffectEvent` for the newest callback, `clearInterval` on unmount; README shows the older ref pattern), `features/performance-demo/IntervalLeakDemo.tsx` (leaky timer without cleanup vs fixed timer; module counters show leaked intervals and ticks after unmount), fifth card on `PerformancePage`; ~100 code lines + README |
-| 25b | Listener leak + useEventListener | 🔍 `pr/25b-listener-leak` | `hooks/useEventListener` (`useEventListener(type, handler, { capture, passive })`, window only, event typed from `WindowEventMap`; `useEffectEvent` for the newest handler, one `listener` function for add and remove), `features/performance-demo/ListenerLeakDemo.tsx` (leaky `pointermove` listener without cleanup vs fixed one; module counters show leaked listeners and calls after unmount), sixth card on `PerformancePage`; ~120 code lines + README |
+| 25b | Listener leak + useEventListener | ✅ PR #66 | `hooks/useEventListener` (`useEventListener(type, handler, { capture, passive })`, window only, event typed from `WindowEventMap`; `useEffectEvent` for the newest handler, one `listener` function for add and remove), `features/performance-demo/ListenerLeakDemo.tsx` (leaky `pointermove` listener without cleanup vs fixed one; module counters show leaked listeners and calls after unmount), sixth card on `PerformancePage`; ~120 code lines + README |
+| 25c | Cache leak + heap snapshot | 🔍 `pr/25c-cache-leak` | `features/performance-demo/CacheLeakDemo.tsx` (`Report` class = 1 MiB `Float64Array`, module-level `unboundedCache` and `boundedCache` (limit 5, oldest removed first, Map insertion order), add-10 and clear buttons, heap snapshot steps on the card), seventh card on `PerformancePage`; no portable module; ~120 code lines |
 
 ## Decisions (and why)
 
@@ -939,6 +940,14 @@ always describes the merged state, and on a `pr/*` branch it describes that PR.
   passive default for `touchstart`/`touchmove`/`wheel` on window. Demo event: `pointermove` (easy to trigger, many events); both trackers use a functional
   update, because several moves can arrive before React re-renders. Measured: production = 1 leaked listener per
   mount, dev (StrictMode) = 2.
+- **Cache leak demo (25c):** no portable cache module (the plan row has none); the bounded cache is 6 inline lines
+  (FIFO by Map insertion order; LRU, TTL and `WeakMap` are in the PR's interview questions). `Report` is a class so a
+  heap snapshot lists it by name; each holds a `Float64Array` of 131,072 numbers (1 MiB, filled so the memory is
+  really used). The caches hold the data, React state only holds the two sizes, so the Map is the only retainer.
+  A "Clear both caches" button shows that the memory is freed once the Map lets go. Heap snapshots must be taken on
+  the dev server: the production build renames the `Report` class and the `unboundedCache` variable (measured: 0 objects named `Report` in a
+  `vite preview` snapshot). Measured in dev: 30 / 35 / 0 `Report` objects and 1 MiB buffers after unbounded × 3,
+  bounded × 3, clear; retainer edge `system / Context --unboundedCache--> Map`.
 
 ## Local state that is not in git
 
