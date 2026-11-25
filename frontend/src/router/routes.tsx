@@ -26,7 +26,7 @@ export const routes: RouteObject[] = [
     element: <RootLayout />,
     // Only for errors in the layout itself: there is no header to keep, so it gets the page padding here.
     errorElement: (
-      <main className="mx-auto max-w-2xl p-8">
+      <main className="mx-auto max-w-2xl px-4 py-6 sm:p-8">
         <RouteErrorPage />
       </main>
     ),
